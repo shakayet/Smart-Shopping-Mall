@@ -26,7 +26,7 @@ const userSchema = new Schema<IUser, UserModal>(
     password: {
       type: String,
       select: 0,
-      minlength: 8,
+      minlength: 6,
       default: null,
     },
     image: {
