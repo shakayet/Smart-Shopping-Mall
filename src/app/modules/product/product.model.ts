@@ -1,0 +1,28 @@
+import { Schema, model } from 'mongoose';
+import { IProduct } from './product.interface';
+
+const productSchema = new Schema<IProduct>(
+  {
+    name: { type: String, required: true },
+    image: { type: String, required: true },
+    brand: { type: String, required: true },
+    description: { type: String, required: true },
+    price: { type: Number, required: true },
+    condition: { type: String, required: true },
+    proofOfPurchase: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ['available', 'secured', 'sold'],
+      default: 'available',
+    },
+    seller: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  },
+  {
+    timestamps: true,
+    toJSON: {
+      virtuals: true,
+    },
+  }
+);
+
+export const Product = model<IProduct>('Product', productSchema);

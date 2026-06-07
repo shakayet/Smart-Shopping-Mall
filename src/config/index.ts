@@ -41,4 +41,11 @@ export default {
     },
     sessionSecret: process.env.SESSION_SECRET || 'your_session_secret_key',
   },
+  aws: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    region: process.env.AWS_REGION,
+    bucketName: process.env.AWS_BUCKET_NAME,
+    cloudfrontDomain: process.env.AWS_CLOUDFRONT_DOMAIN,
+  },
 };
