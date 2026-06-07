@@ -12,14 +12,6 @@ const userSchema = new Schema<IUser, UserModal>(
       type: String,
       required: true,
     },
-    firstName: {
-      type: String,
-      default: null,
-    },
-    lastName: {
-      type: String,
-      default: null,
-    },
     role: {
       type: String,
       enum: Object.values(USER_ROLES),
@@ -47,21 +39,12 @@ const userSchema = new Schema<IUser, UserModal>(
     },
     status: {
       type: String,
-      enum: ['active', 'delete'],
+      enum: ['active', 'ban'],
       default: 'active',
     },
     verified: {
       type: Boolean,
       default: false,
-    },
-    provider: {
-      type: String,
-      enum: ['local', 'google', 'facebook', 'github'],
-      default: 'local',
-    },
-    providerId: {
-      type: String,
-      default: null,
     },
     authentication: {
       type: {
