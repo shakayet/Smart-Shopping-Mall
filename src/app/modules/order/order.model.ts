@@ -18,7 +18,7 @@ const orderSchema = new Schema<IOrder>(
     },
     payment: {
       provider: { type: String, enum: ['stripe'], default: 'stripe' },
-      paymentIntentId: { type: String, required: true },
+      paymentIntentId: { type: String, required: true, unique: true },
       status: {
         type: String,
         enum: Object.values(PAYMENT_STATUS),
@@ -46,5 +46,9 @@ const orderSchema = new Schema<IOrder>(
   },
   { timestamps: true },
 );
+
+orderSchema.index({ buyer: 1 });
+orderSchema.index({ seller: 1 });
+orderSchema.index({ status: 1 });
 
 export const Order = model<IOrder>('Order', orderSchema);

@@ -25,4 +25,7 @@ const productSchema = new Schema<IProduct>(
   }
 );
 
+productSchema.index({ status: 1 });
+productSchema.index({ seller: 1 });
+
 export const Product = model<IProduct>('Product', productSchema);
