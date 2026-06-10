@@ -23,6 +23,12 @@ const userSchema = new Schema<IUser, UserModal>(
       unique: true,
       lowercase: true,
     },
+    contact: {
+      type: String,
+    },
+    location: {
+      type: String,
+    },
     password: {
       type: String,
       select: 0,
