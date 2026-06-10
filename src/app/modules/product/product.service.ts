@@ -4,7 +4,11 @@ import QueryBuilder from '../../builder/QueryBuilder';
 import { IProduct } from './product.interface';
 import { Product } from './product.model';
 import { uploadToS3 } from '../../../helpers/s3Helper';
+import { cache } from '../../../helpers/cache';
 import fs from 'fs';
+
+const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
+const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
 
 const createProductToDB = async (
   payload: Partial<IProduct>,
@@ -27,12 +31,24 @@ const createProductToDB = async (
   payload.status = 'available';
 
   const result = await Product.create(payload);
+  cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
   return result;
 };
 
 const getAllProductsFromDB = async (query: Record<string, unknown>) => {
   // Only show items still available for sale unless a specific status is requested
   const queryWithDefaults = { status: 'available', ...query };
+
+  type ProductListResponse = {
+    result: IProduct[];
+    meta: { total: number; limit: number; page: number; totalPage: number };
+  };
+
+  const cacheKey = PRODUCT_LIST_CACHE_PREFIX + JSON.stringify(queryWithDefaults);
+  const cached = cache.get<ProductListResponse>(cacheKey);
+  if (cached) {
+    return cached;
+  }
 
   const productQuery = new QueryBuilder(Product.find(), queryWithDefaults)
     .search(['name', 'brand', 'description'])
@@ -41,10 +57,15 @@ const getAllProductsFromDB = async (query: Record<string, unknown>) => {
     .paginate()
     .fields();
 
-  const result = await productQuery.modelQuery.populate('seller', 'name location contact');
-  const meta = await productQuery.getPaginationInfo();
+  const [result, meta] = await Promise.all([
+    productQuery.modelQuery.populate('seller', 'name location contact'),
+    productQuery.getPaginationInfo(),
+  ]);
 
-  return { result, meta };
+  const response = { result, meta };
+  cache.set(cacheKey, response, PRODUCT_LIST_CACHE_TTL_MS);
+
+  return response;
 };
 
 const getProductDetailsFromDB = async (id: string) => {
@@ -72,6 +93,7 @@ const updateProductToDB = async (
   }
 
   const result = await Product.findByIdAndUpdate(id, payload, { new: true });
+  cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
   return result;
 };
 
@@ -87,6 +109,7 @@ const deleteProductFromDB = async (id: string, userId: string, userRole: string)
   }
 
   const result = await Product.findByIdAndDelete(id);
+  cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
   return result;
 };
 

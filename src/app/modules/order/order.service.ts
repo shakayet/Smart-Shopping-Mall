@@ -101,11 +101,13 @@ const getMyOrders = async (
 
   const orderQuery = new QueryBuilder(Order.find(filter), query).sort().paginate();
 
-  const result = await orderQuery.modelQuery
-    .populate('product')
-    .populate('buyer', 'name email contact')
-    .populate('seller', 'name email contact');
-  const meta = await orderQuery.getPaginationInfo();
+  const [result, meta] = await Promise.all([
+    orderQuery.modelQuery
+      .populate('product')
+      .populate('buyer', 'name email contact')
+      .populate('seller', 'name email contact'),
+    orderQuery.getPaginationInfo(),
+  ]);
 
   return { result, meta };
 };
@@ -134,11 +136,13 @@ const getOrderById = async (orderId: string, user: JwtPayload) => {
 const getAllOrdersForAdmin = async (query: Record<string, unknown>) => {
   const orderQuery = new QueryBuilder(Order.find(), query).filter().sort().paginate();
 
-  const result = await orderQuery.modelQuery
-    .populate('product')
-    .populate('buyer', 'name email contact location')
-    .populate('seller', 'name email contact location');
-  const meta = await orderQuery.getPaginationInfo();
+  const [result, meta] = await Promise.all([
+    orderQuery.modelQuery
+      .populate('product')
+      .populate('buyer', 'name email contact location')
+      .populate('seller', 'name email contact location'),
+    orderQuery.getPaginationInfo(),
+  ]);
 
   return { result, meta };
 };

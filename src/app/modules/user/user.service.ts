@@ -18,8 +18,10 @@ const getAllUsersToDB = async (query: Record<string, unknown>) => {
     .paginate()
     .fields();
 
-  const result = await userQuery.modelQuery;
-  const meta = await userQuery.getPaginationInfo();
+  const [result, meta] = await Promise.all([
+    userQuery.modelQuery,
+    userQuery.getPaginationInfo(),
+  ]);
 
   return { result, meta };
 };
