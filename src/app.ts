@@ -8,14 +8,23 @@ import config from './config';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
 import router from './routes';
 import { Morgan } from './shared/morgen';
+import { PaymentController } from './app/modules/payment/payment.controller';
 const app = express();
 
 //morgan
 app.use(Morgan.successHandler);
 app.use(Morgan.errorHandler);
 
-//body parser
 app.use(cors());
+
+//Stripe webhook needs the raw request body, must be registered before express.json()
+app.post(
+  '/api/v1/payment/webhook',
+  express.raw({ type: 'application/json' }),
+  PaymentController.stripeWebhook,
+);
+
+//body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

@@ -31,7 +31,10 @@ const createProductToDB = async (
 };
 
 const getAllProductsFromDB = async (query: Record<string, unknown>) => {
-  const productQuery = new QueryBuilder(Product.find(), query)
+  // Only show items still available for sale unless a specific status is requested
+  const queryWithDefaults = { status: 'available', ...query };
+
+  const productQuery = new QueryBuilder(Product.find(), queryWithDefaults)
     .search(['name', 'brand', 'description'])
     .filter()
     .sort()
@@ -87,25 +90,10 @@ const deleteProductFromDB = async (id: string, userId: string, userRole: string)
   return result;
 };
 
-const secureProductToDB = async (id: string) => {
-  const product = await Product.findById(id);
-  if (!product) {
-    throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
-  }
-
-  if (product.status !== 'available') {
-    throw new ApiError(StatusCodes.BAD_REQUEST, `Product is already ${product.status}`);
-  }
-
-  const result = await Product.findByIdAndUpdate(id, { status: 'secured' }, { new: true });
-  return result;
-};
-
 export const ProductService = {
   createProductToDB,
   getAllProductsFromDB,
   getProductDetailsFromDB,
   updateProductToDB,
   deleteProductFromDB,
-  secureProductToDB,
 };

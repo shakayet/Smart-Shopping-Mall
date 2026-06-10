@@ -74,22 +74,10 @@ const deleteProduct = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const secureProduct = catchAsync(async (req: Request, res: Response) => {
-  const result = await ProductService.secureProductToDB(req.params.id);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: StatusCodes.OK,
-    message: 'Product secured successfully',
-    data: result,
-  });
-});
-
 export const ProductController = {
   createProduct,
   getAllProducts,
   getProductDetails,
   updateProduct,
   deleteProduct,
-  secureProduct,
 };

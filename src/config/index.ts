@@ -48,4 +48,15 @@ export default {
     bucketName: process.env.AWS_BUCKET_NAME,
     cloudfrontDomain: process.env.AWS_CLOUDFRONT_DOMAIN,
   },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY,
+    webhookSecret: process.env.WEBHOOK_SECRET,
+    currency: process.env.STRIPE_CURRENCY || 'aed',
+  },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY,
+  },
+  platform: {
+    feePercentage: Number(process.env.PLATFORM_FEE_PERCENTAGE) || 12,
+  },
 };
