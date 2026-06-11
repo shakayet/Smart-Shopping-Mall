@@ -8,10 +8,12 @@ export type IUser = {
   role: USER_ROLES;
   contact?: string;
   email: string;
-  password: string;
+  password?: string;
   location?: string;
   image?: string;
   avatar?: string;
+  provider?: 'local' | 'google';
+  providerId?: string;
   status: 'active' | 'ban';
   verified: boolean;
   authentication?: {

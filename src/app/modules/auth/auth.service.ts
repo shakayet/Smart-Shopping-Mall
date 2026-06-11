@@ -34,7 +34,7 @@ const loginUserFromDB = async (payload: ILoginData) => {
   }
 
   //check user status
-  if (isExistUser.status === 'delete') {
+  if (isExistUser.status === 'ban') {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'You don’t have permission to access this content.It looks like your account has been deactivated.',
@@ -42,11 +42,13 @@ const loginUserFromDB = async (payload: ILoginData) => {
   }
 
   //check match password
-  if (
-    password &&
-    !(await User.isMatchPassword(password, isExistUser.password))
-  ) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Password is incorrect!');
+  if (password) {
+    if (
+      !isExistUser.password ||
+      !(await User.isMatchPassword(password, isExistUser.password))
+    ) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'Password is incorrect!');
+    }
   }
 
   //create access token
@@ -222,7 +224,8 @@ const changePasswordToDB = async (
   //current password match
   if (
     currentPassword &&
-    !(await User.isMatchPassword(currentPassword, isExistUser.password))
+    (!isExistUser.password ||
+      !(await User.isMatchPassword(currentPassword, isExistUser.password)))
   ) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Password is incorrect');
   }
@@ -318,7 +321,7 @@ const refreshTokenToDB = async (token: string) => {
   }
 
   //check user status
-  if (isExistUser.status === 'delete') {
+  if (isExistUser.status === 'ban') {
     throw new ApiError(
       StatusCodes.UNAUTHORIZED,
       'Your account has been deactivated.',

@@ -43,6 +43,14 @@ const userSchema = new Schema<IUser, UserModal>(
       type: String,
       default: null,
     },
+    provider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local',
+    },
+    providerId: {
+      type: String,
+    },
     status: {
       type: String,
       enum: ['active', 'ban'],

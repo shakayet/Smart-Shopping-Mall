@@ -38,8 +38,6 @@ if (config.oauth.google.clientID && config.oauth.google.clientSecret) {
             email,
             name: displayName || 'User',
             role: 'USER',
-            firstName: displayName?.split(' ')[0] || 'User',
-            lastName: displayName?.split(' ').slice(1).join(' ') || '',
             avatar: photos?.[0]?.value,
             provider: 'google',
             providerId: id,
@@ -47,7 +45,6 @@ if (config.oauth.google.clientID && config.oauth.google.clientSecret) {
             status: 'active',
             contact: '',
             location: '',
-            password: null,
           });
         } else {
           // Update existing user with Google provider info if not set
