@@ -1,11 +1,13 @@
 import cors from 'cors';
 import express, { Request, Response } from 'express';
+import helmet from 'helmet';
 import { StatusCodes } from 'http-status-codes';
 import session from 'express-session';
 import passport from 'passport';
 import { initializePassport } from './config/passport';
 import config from './config';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
+import { apiLimiter } from './app/middlewares/rateLimiter';
 import router from './routes';
 import { Morgan } from './shared/morgen';
 import { PaymentController } from './app/modules/payment/payment.controller';
@@ -15,7 +17,10 @@ const app = express();
 app.use(Morgan.successHandler);
 app.use(Morgan.errorHandler);
 
-app.use(cors());
+//security headers
+app.use(helmet());
+
+app.use(cors({ origin: config.cors_origin, credentials: true }));
 
 //Stripe webhook needs the raw request body, must be registered before express.json()
 app.post(
@@ -27,6 +32,9 @@ app.post(
 //body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+//rate limiting for all API routes
+app.use('/api', apiLimiter);
 
 //session configuration for OAuth
 app.use(

@@ -10,6 +10,9 @@ export default {
   node_env: process.env.NODE_ENV,
   port: process.env.PORT,
   bcrypt_salt_rounds: process.env.BCRYPT_SALT_ROUNDS,
+  cors_origin: process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+    : '*',
   branding: {
     projectName: process.env.PROJECT_NAME,
     logoUrl: process.env.BRAND_LOGO,
