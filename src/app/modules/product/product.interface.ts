@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-definitions */
 import { Types } from 'mongoose';
 
 export type IProductStatus = 'available' | 'secured' | 'sold';
