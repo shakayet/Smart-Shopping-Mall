@@ -9,7 +9,7 @@ const productSchema = new Schema<IProduct>(
     description: { type: String, required: true },
     price: { type: Number, required: true },
     condition: { type: String, required: true },
-    proofOfPurchase: { type: String, required: true },
+    proofOfPurchase: { type: String},
     status: {
       type: String,
       enum: ['available', 'secured', 'sold'],
