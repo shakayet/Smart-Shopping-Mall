@@ -15,12 +15,30 @@ router
     auth(USER_ROLES.USER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
     fileUploadHandler(),
     (req: Request, res: Response, next: NextFunction) => {
-      if (req.body.data) {
-        req.body = ProductValidation.createProductZodSchema.parse({
-          body: JSON.parse(req.body.data),
+      try {
+        let productData;
+
+        // Handle both cases: JSON in data field or individual form fields
+        if (req.body.data) {
+          productData = JSON.parse(req.body.data);
+        } else {
+          // If price is a string from form data, convert to number
+          productData = {
+            ...req.body,
+            price: req.body.price ? Number(req.body.price) : undefined,
+          };
+        }
+
+        // Validate the data
+        const validatedData = ProductValidation.createProductZodSchema.parse({
+          body: productData,
         }).body;
+
+        req.body = validatedData;
+        return ProductController.createProduct(req, res, next);
+      } catch (error) {
+        next(error);
       }
-      return ProductController.createProduct(req, res, next);
     },
   );
 
