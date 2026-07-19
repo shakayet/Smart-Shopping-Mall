@@ -4,7 +4,7 @@ import ApiError from '../../../errors/ApiError';
 import QueryBuilder from '../../builder/QueryBuilder';
 import { IProduct } from './product.interface';
 import { Product } from './product.model';
-import { uploadToS3 } from '../../../helpers/s3Helper';
+import { uploadToS3, deleteFromS3 } from '../../../helpers/s3Helper';
 import { cache } from '../../../helpers/cache';
 import fs from 'fs';
 
@@ -131,6 +131,14 @@ const deleteProductFromDB = async (
       'You do not have permission to delete this product',
     );
   }
+
+  // Delete images from S3
+  const deletePromises = [];
+  deletePromises.push(deleteFromS3(product.image));
+  if (product.proofOfPurchase) {
+    deletePromises.push(deleteFromS3(product.proofOfPurchase));
+  }
+  await Promise.all(deletePromises);
 
   const result = await Product.findByIdAndDelete(id);
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
