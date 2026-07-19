@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import { Request } from 'express';
 import fs from 'fs';
 import { StatusCodes } from 'http-status-codes';
@@ -54,6 +55,7 @@ const fileUploadHandler = () => {
   });
 
   //file filter
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filterFilter = (req: Request, file: any, cb: FileFilterCallback) => {
     if (file.fieldname === 'image') {
       if (
@@ -66,8 +68,8 @@ const fileUploadHandler = () => {
         cb(
           new ApiError(
             StatusCodes.BAD_REQUEST,
-            'Only .jpeg, .png, .jpg file supported'
-          )
+            'Only .jpeg, .png, .jpg file supported',
+          ),
         );
       }
     } else if (file.fieldname === 'media') {
@@ -77,8 +79,8 @@ const fileUploadHandler = () => {
         cb(
           new ApiError(
             StatusCodes.BAD_REQUEST,
-            'Only .mp4, .mp3, file supported'
-          )
+            'Only .mp4, .mp3, file supported',
+          ),
         );
       }
     } else if (file.fieldname === 'doc') {

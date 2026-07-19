@@ -1,6 +1,6 @@
-import { S3Client } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
-import { Jimp } from 'jimp';
+/* eslint-disable no-undef */
+/* eslint-disable no-console */
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import config from '../config';
 
@@ -14,40 +14,24 @@ const s3Client = new S3Client({
 
 export const uploadToS3 = async (
   file: Express.Multer.File,
-  folder: string = 'products'
+  folder: string = 'products',
 ): Promise<string> => {
-  let fileBuffer: Buffer | fs.ReadStream = fs.createReadStream(file.path);
-  let fileName = `${Date.now()}-${file.originalname}`;
-  let contentType = file.mimetype;
+  const fileStream = fs.createReadStream(file.path);
+  const fileName = `${folder}/${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`;
 
-  // Image Processing if required
-  if (file.mimetype.startsWith('image/')) {
-    const image = await Jimp.read(file.path);
-    // Example processing: resize to a max width of 1024px while maintaining aspect ratio
-    if (image.width > 1024) {
-      image.resize({ w: 1024 });
-    }
-    // Convert back to buffer
-    const processedBuffer = await image.getBuffer(file.mimetype as any);
-    fileBuffer = processedBuffer;
-  }
+  const uploadParams = {
+    Bucket: config.aws.bucketName as string,
+    Key: fileName,
+    Body: fileStream,
+    ContentType: file.mimetype,
+  };
 
-  const upload = new Upload({
-    client: s3Client,
-    params: {
-      Bucket: config.aws.bucketName as string,
-      Key: `${folder}/${fileName}`,
-      Body: fileBuffer,
-      ContentType: contentType,
-    },
-  });
+  const command = new PutObjectCommand(uploadParams);
+  await s3Client.send(command);
 
-  await upload.done();
-
-  // Return CloudFront URL if available, otherwise S3 URL
+  // Return CloudFront URL if available, else S3 URL
   if (config.aws.cloudfrontDomain) {
-    return `${config.aws.cloudfrontDomain}/${folder}/${fileName}`;
+    return `${config.aws.cloudfrontDomain}/${fileName}`;
   }
-  
-  return `https://${config.aws.bucketName}.s3.${config.aws.region}.amazonaws.com/${folder}/${fileName}`;
+  return `https://${config.aws.bucketName}.s3.${config.aws.region}.amazonaws.com/${fileName}`;
 };

@@ -30,9 +30,9 @@ router
         }
 
         // Validate the data
-        const validatedData = ProductValidation.createProductZodSchema.parse({
-          body: productData,
-        }).body;
+        const validatedData =
+          ProductValidation.createProductZodSchema.parse(productData);
+
 
         req.body = validatedData;
         return ProductController.createProduct(req, res, next);

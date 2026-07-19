@@ -11,25 +11,26 @@ import fs from 'fs';
 const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
 
-const createProductToDB = async (
-  payload: Partial<IProduct>,
-  files: any
-) => {
-  if (!files?.image || !files?.doc) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Product image and proof of purchase are required');
+const createProductToDB = async (payload: Partial<IProduct>, files: any) => {
+  if (!files?.image) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Product image is required');
   }
 
   // Upload to S3
   const imageUrl = await uploadToS3(files.image[0], 'product-images');
-  const proofUrl = await uploadToS3(files.doc[0], 'product-proofs');
 
-  // Cleanup local files
+  // Cleanup local image file
   fs.unlinkSync(files.image[0].path);
-  fs.unlinkSync(files.doc[0].path);
 
   payload.image = imageUrl;
-  payload.proofOfPurchase = proofUrl;
   payload.status = 'available';
+
+  // Handle proof of purchase if provided
+  if (files?.doc) {
+    const proofUrl = await uploadToS3(files.doc[0], 'product-proofs');
+    fs.unlinkSync(files.doc[0].path);
+    payload.proofOfPurchase = proofUrl;
+  }
 
   const result = await Product.create(payload);
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
@@ -45,7 +46,8 @@ const getAllProductsFromDB = async (query: Record<string, unknown>) => {
     meta: { total: number; limit: number; page: number; totalPage: number };
   };
 
-  const cacheKey = PRODUCT_LIST_CACHE_PREFIX + JSON.stringify(queryWithDefaults);
+  const cacheKey =
+    PRODUCT_LIST_CACHE_PREFIX + JSON.stringify(queryWithDefaults);
   const cached = cache.get<ProductListResponse>(cacheKey);
   if (cached) {
     return cached;
@@ -70,7 +72,10 @@ const getAllProductsFromDB = async (query: Record<string, unknown>) => {
 };
 
 const getProductDetailsFromDB = async (id: string) => {
-  const result = await Product.findById(id).populate('seller', 'name location contact');
+  const result = await Product.findById(id).populate(
+    'seller',
+    'name location contact',
+  );
   if (!result) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
   }
@@ -81,7 +86,7 @@ const updateProductToDB = async (
   id: string,
   userId: string,
   userRole: string,
-  payload: Partial<IProduct>
+  payload: Partial<IProduct>,
 ) => {
   const product = await Product.findById(id);
   if (!product) {
@@ -89,8 +94,15 @@ const updateProductToDB = async (
   }
 
   // Only seller or admin can update
-  if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN' && product.seller.toString() !== userId) {
-    throw new ApiError(StatusCodes.FORBIDDEN, 'You do not have permission to update this product');
+  if (
+    userRole !== 'ADMIN' &&
+    userRole !== 'SUPER_ADMIN' &&
+    product.seller.toString() !== userId
+  ) {
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      'You do not have permission to update this product',
+    );
   }
 
   const result = await Product.findByIdAndUpdate(id, payload, { new: true });
@@ -98,15 +110,26 @@ const updateProductToDB = async (
   return result;
 };
 
-const deleteProductFromDB = async (id: string, userId: string, userRole: string) => {
+const deleteProductFromDB = async (
+  id: string,
+  userId: string,
+  userRole: string,
+) => {
   const product = await Product.findById(id);
   if (!product) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
   }
 
   // Only seller or admin can delete
-  if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN' && product.seller.toString() !== userId) {
-    throw new ApiError(StatusCodes.FORBIDDEN, 'You do not have permission to delete this product');
+  if (
+    userRole !== 'ADMIN' &&
+    userRole !== 'SUPER_ADMIN' &&
+    product.seller.toString() !== userId
+  ) {
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      'You do not have permission to delete this product',
+    );
   }
 
   const result = await Product.findByIdAndDelete(id);
