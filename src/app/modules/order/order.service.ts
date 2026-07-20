@@ -1,13 +1,24 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { StatusCodes } from 'http-status-codes';
 import { JwtPayload } from 'jsonwebtoken';
 import config from '../../../config';
-import { ORDER_STATUS, PAYMENT_STATUS, PAYOUT_STATUS } from '../../../enums/order';
+import {
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+  PAYOUT_STATUS,
+} from '../../../enums/order';
 import { USER_ROLES } from '../../../enums/user';
 import ApiError from '../../../errors/ApiError';
-import { createPaymentIntent, createRefund } from '../../../integrations/stripe';
+import {
+  createPaymentIntent,
+  createRefund,
+} from '../../../integrations/stripe';
 import QueryBuilder from '../../builder/QueryBuilder';
 import { Product } from '../product/product.model';
-import { ORDER_STATUS_TRANSITIONS, REFUND_TRIGGER_STATUSES } from './order.constant';
+import {
+  ORDER_STATUS_TRANSITIONS,
+  REFUND_TRIGGER_STATUSES,
+} from './order.constant';
 import { IDeliveryDetails } from './order.interface';
 import { Order } from './order.model';
 
@@ -27,11 +38,17 @@ const checkoutOrder = async (
   }
 
   if (product.status !== 'available') {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'This item is no longer available');
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'This item is no longer available',
+    );
   }
 
   if (product.seller.toString() === buyerId) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'You cannot buy your own listing');
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'You cannot buy your own listing',
+    );
   }
 
   const platformFee = Number(
@@ -62,28 +79,40 @@ const checkoutOrder = async (
     },
     payoutStatus: PAYOUT_STATUS.PENDING,
     status: ORDER_STATUS.PENDING_PAYMENT,
-    statusHistory: [{ status: ORDER_STATUS.PENDING_PAYMENT, changedAt: new Date() }],
+    statusHistory: [
+      { status: ORDER_STATUS.PENDING_PAYMENT, changedAt: new Date() },
+    ],
   });
 
   return { order, clientSecret: paymentIntent.client_secret };
 };
 
 const handlePaymentSucceeded = async (paymentIntentId: string) => {
-  const order = await Order.findOne({ 'payment.paymentIntentId': paymentIntentId });
+  const order = await Order.findOne({
+    'payment.paymentIntentId': paymentIntentId,
+  });
   if (!order || order.payment.status === PAYMENT_STATUS.PAID) {
     return;
   }
 
   order.payment.status = PAYMENT_STATUS.PAID;
   order.status = ORDER_STATUS.SECURED;
-  order.statusHistory.push({ status: ORDER_STATUS.SECURED, changedAt: new Date() });
+  order.statusHistory.push({
+    status: ORDER_STATUS.SECURED,
+    changedAt: new Date(),
+  });
   await order.save();
 
-  await Product.findByIdAndUpdate(order.product, { status: 'secured' });
+  await Product.findByIdAndUpdate(order.product, {
+    status: 'secured',
+    buyer: order.buyer,
+  });
 };
 
 const handlePaymentFailed = async (paymentIntentId: string) => {
-  const order = await Order.findOne({ 'payment.paymentIntentId': paymentIntentId });
+  const order = await Order.findOne({
+    'payment.paymentIntentId': paymentIntentId,
+  });
   if (!order || order.payment.status === PAYMENT_STATUS.PAID) {
     return;
   }
@@ -99,7 +128,9 @@ const getMyOrders = async (
 ) => {
   const filter = role === 'seller' ? { seller: userId } : { buyer: userId };
 
-  const orderQuery = new QueryBuilder(Order.find(filter), query).sort().paginate();
+  const orderQuery = new QueryBuilder(Order.find(filter), query)
+    .sort()
+    .paginate();
 
   const [result, meta] = await Promise.all([
     orderQuery.modelQuery
@@ -122,19 +153,27 @@ const getOrderById = async (orderId: string, user: JwtPayload) => {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Order not found');
   }
 
-  const isAdmin = user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.SUPER_ADMIN;
+  const isAdmin =
+    user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.SUPER_ADMIN;
   const isParty =
-    order.buyer._id?.toString() === user.id || order.seller._id?.toString() === user.id;
+    order.buyer._id?.toString() === user.id ||
+    order.seller._id?.toString() === user.id;
 
   if (!isAdmin && !isParty) {
-    throw new ApiError(StatusCodes.FORBIDDEN, "You don't have permission to view this order");
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      "You don't have permission to view this order",
+    );
   }
 
   return order;
 };
 
 const getAllOrdersForAdmin = async (query: Record<string, unknown>) => {
-  const orderQuery = new QueryBuilder(Order.find(), query).filter().sort().paginate();
+  const orderQuery = new QueryBuilder(Order.find(), query)
+    .filter()
+    .sort()
+    .paginate();
 
   const [result, meta] = await Promise.all([
     orderQuery.modelQuery
@@ -171,7 +210,10 @@ const updateOrderStatus = async (
       await createRefund(order.payment.paymentIntentId);
       order.payment.status = PAYMENT_STATUS.REFUNDED;
     }
-    await Product.findByIdAndUpdate(order.product, { status: 'available' });
+    await Product.findByIdAndUpdate(order.product, {
+      status: 'available',
+      buyer: undefined,
+    });
   }
 
   if (targetStatus === ORDER_STATUS.COMPLETED) {
@@ -224,7 +266,10 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
   }
 
   if (order.buyer.toString() !== buyerId) {
-    throw new ApiError(StatusCodes.FORBIDDEN, "You don't have permission to cancel this order");
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      "You don't have permission to cancel this order",
+    );
   }
 
   if (order.status !== ORDER_STATUS.SECURED) {
@@ -240,10 +285,16 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
   }
 
   order.status = ORDER_STATUS.CANCELLED;
-  order.statusHistory.push({ status: ORDER_STATUS.CANCELLED, changedAt: new Date() });
+  order.statusHistory.push({
+    status: ORDER_STATUS.CANCELLED,
+    changedAt: new Date(),
+  });
   await order.save();
 
-  await Product.findByIdAndUpdate(order.product, { status: 'available' });
+  await Product.findByIdAndUpdate(order.product, {
+    status: 'available',
+    buyer: undefined,
+  });
 
   return order;
 };

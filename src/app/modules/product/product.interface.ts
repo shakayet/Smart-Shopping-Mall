@@ -14,4 +14,5 @@ export interface IProduct {
   status: IProductStatus;
   seller: Types.ObjectId;
   orderId: number;
+  buyer?: Types.ObjectId;
 }

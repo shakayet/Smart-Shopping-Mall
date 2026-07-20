@@ -16,6 +16,7 @@ const productSchema = new Schema<IProduct>(
       default: 'available',
     },
     seller: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    buyer: { type: Schema.Types.ObjectId, ref: 'User' },
     orderId: { type: Number, required: true, unique: true },
   },
   {
