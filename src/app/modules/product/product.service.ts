@@ -11,10 +11,18 @@ import fs from 'fs';
 const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
 
-const createProductToDB = async (payload: Partial<IProduct>, files: any) => {
+const createProductToDB = async (
+  payload: Partial<IProduct>,
+  files: any
+) => {
   if (!files?.image) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Product image is required');
   }
+
+  // Generate unique orderId
+  const lastProduct = await Product.findOne().sort({ orderId: -1 });
+  const nextOrderId = lastProduct ? lastProduct.orderId + 1 : 1000; // Start from 1000 if no products exist
+  payload.orderId = nextOrderId;
 
   // Upload to S3
   const imageUrl = await uploadToS3(files.image[0], 'product-images');

@@ -13,4 +13,5 @@ export interface IProduct {
   proofOfPurchase?: string;
   status: IProductStatus;
   seller: Types.ObjectId;
+  orderId: number;
 }
