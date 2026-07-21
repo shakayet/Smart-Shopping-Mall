@@ -216,7 +216,10 @@ const updateOrderStatus = async (
     });
   }
 
-  if (targetStatus === ORDER_STATUS.COMPLETED) {
+  if (
+    targetStatus === ORDER_STATUS.COMPLETED ||
+    targetStatus === ORDER_STATUS.DELIVERED
+  ) {
     await Product.findByIdAndUpdate(order.product, { status: 'sold' });
   }
 
