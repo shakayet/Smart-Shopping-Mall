@@ -274,8 +274,93 @@ const reportStatusUpdate = (values: IReportStatusEmail) => {
   return data;
 };
 
+export type IIssueCreatedEmail = {
+  email: string;
+  productName: string;
+  issueType: string;
+  reason: string;
+  refunded: boolean;
+};
+
+export type IIssueResolvedEmail = {
+  email: string;
+  productName: string;
+  action: 'delete' | 'make_available';
+};
+
+const issueCreated = (values: IIssueCreatedEmail) => {
+  const projectName = getProjectName();
+
+  const issueTypeLabel =
+    values.issueType === 'buyer_refused'
+      ? 'Buyer Refused to Collect'
+      : 'Verification Failed';
+
+  const bodyContent = `
+    <p style="margin: 0 0 10px; color: #d1d5db;">
+      An issue has been reported for your product "${values.productName}".
+    </p>
+    <p style="margin: 8px 0; color: #d1d5db;">
+      Issue Type: <strong style="color: #f9fafb;">${issueTypeLabel}</strong>
+    </p>
+    <p style="margin: 8px 0; color: #d1d5db;">
+      Reason: <span style="color: #9ca3af;">${values.reason}</span>
+    </p>
+    ${values.refunded ? `
+      <p style="margin: 8px 0; color: #d1d5db;">
+        The buyer has been fully refunded.
+      </p>
+    ` : ''}
+    <p style="margin: 16px 0 0; color: #6b7280;">
+      Our admin team will take final action on this product shortly.
+    </p>
+  `;
+
+  return {
+    to: values.email,
+    subject: `${projectName} - Issue Reported for Your Product`,
+    html: baseTemplate('Issue Reported', bodyContent),
+  };
+};
+
+const issueResolved = (values: IIssueResolvedEmail) => {
+  const projectName = getProjectName();
+
+  const bodyContent =
+    values.action === 'delete'
+      ? `
+          <p style="margin: 0 0 10px; color: #d1d5db;">
+            Your product "${values.productName}" has been permanently deleted from ${projectName}.
+          </p>
+          <p style="margin: 16px 0 0; color: #6b7280;">
+            If you have questions, please contact our support team.
+          </p>
+        `
+      : `
+          <p style="margin: 0 0 10px; color: #d1d5db;">
+            Great news! Your product "${values.productName}" has been marked as available again on ${projectName}.
+          </p>
+          <p style="margin: 16px 0 0; color: #6b7280;">
+            It can now be purchased by other buyers.
+          </p>
+        `;
+
+  const subject =
+    values.action === 'delete'
+      ? `${projectName} - Product Deleted`
+      : `${projectName} - Product Back Online`;
+
+  return {
+    to: values.email,
+    subject,
+    html: baseTemplate(subject, bodyContent),
+  };
+};
+
 export const emailTemplate = {
   createAccount,
   resetPassword,
   reportStatusUpdate,
+  issueCreated,
+  issueResolved,
 };

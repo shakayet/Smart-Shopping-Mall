@@ -16,6 +16,11 @@ const s3Client = new S3Client({
   },
 });
 
+// Escape regex special characters
+const escapeRegExp = (str: string): string => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
 // Helper function to extract S3 key from URL
 const extractS3KeyFromUrl = (url: string): string => {
   // Check if it's a CloudFront URL
@@ -26,8 +31,10 @@ const extractS3KeyFromUrl = (url: string): string => {
     return url.replace(config.aws.cloudfrontDomain + '/', '');
   }
   // Check if it's an S3 URL
+  const escapedBucketName = escapeRegExp(config.aws.bucketName as string);
+  const escapedRegion = escapeRegExp(config.aws.region as string);
   const s3UrlPattern = new RegExp(
-    `^https?://${config.aws.bucketName}\\.s3[-.]${config.aws.region}\\.amazonaws\\.com/`,
+    `^https?://${escapedBucketName}\\.s3[-.]${escapedRegion}\\.amazonaws\\.com/`,
   );
   if (s3UrlPattern.test(url)) {
     return url.replace(s3UrlPattern, '');
