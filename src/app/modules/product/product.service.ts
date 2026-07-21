@@ -8,7 +8,7 @@ import { uploadToS3, deleteFromS3 } from '../../../helpers/s3Helper';
 import { cache } from '../../../helpers/cache';
 import fs from 'fs';
 
-const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
+export const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
 
 const createProductToDB = async (

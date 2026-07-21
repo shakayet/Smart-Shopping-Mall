@@ -6,6 +6,7 @@ import { ProductRoutes } from '../app/modules/product/product.route';
 import { WishlistRoutes } from '../app/modules/wishlist/wishlist.route';
 import { OrderRoutes } from '../app/modules/order/order.route';
 import { AIRoutes } from '../app/modules/ai/ai.route';
+import { IssueRoutes } from '../app/modules/issue/issue.route';
 const router = express.Router();
 
 const apiRoutes = [
@@ -36,6 +37,10 @@ const apiRoutes = [
   {
     path: '/ai',
     route: AIRoutes,
+  },
+  {
+    path: '/issues',
+    route: IssueRoutes,
   },
 ];
 
