@@ -5,43 +5,124 @@ import config from '../../../config';
 import ApiError from '../../../errors/ApiError';
 import { emailHelper } from '../../../helpers/emailHelper';
 import { jwtHelper } from '../../../helpers/jwtHelper';
+import { errorLogger, logger } from '../../../shared/logger';
 import { emailTemplate } from '../../../shared/emailTemplate';
 import {
   IAuthResetPassword,
   IChangePassword,
   ILoginData,
+  IRequestLoginOtp,
+  IResendLoginOtp,
   IVerifyEmail,
+  IVerifyLoginOtp,
 } from '../../../types/auth';
+import { USER_ROLES } from '../../../enums/user';
 import cryptoToken from '../../../util/cryptoToken';
 import generateOTP from '../../../util/generateOTP';
 import { ResetToken } from '../resetToken/resetToken.model';
 import { User } from '../user/user.model';
+import { ILoginOtp } from '../user/user.interface';
 
-//login
-const loginUserFromDB = async (payload: ILoginData) => {
-  const { email, password } = payload;
-  const isExistUser = await User.findOne({ email }).select('+password');
-  if (!isExistUser) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
-  }
+const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds between requests / resends
+const OTP_MAX_ATTEMPTS = 6;
 
-  //check verified and status
-  if (!isExistUser.verified) {
+const ADMIN_ROLES = new Set([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN]);
+
+const buildAuthTokens = (user: {
+  _id: string | { toString(): string };
+  role: USER_ROLES;
+  email: string;
+}) => {
+  const accessToken = jwtHelper.createToken(
+    {
+      id: user._id.toString(),
+      role: user.role,
+      email: user.email,
+    },
+    config.jwt.jwt_secret as Secret,
+    config.jwt.jwt_expire_in as string,
+  );
+  const refreshToken = jwtHelper.createToken(
+    {
+      id: user._id.toString(),
+      role: user.role,
+      email: user.email,
+    },
+    config.jwt.jwt_refresh_secret as Secret,
+    config.jwt.jwt_refresh_expire_in as string,
+  );
+  return { accessToken, refreshToken };
+};
+
+type IAccountStatus = {
+  verified: boolean;
+  status: string;
+  email: string;
+  role: USER_ROLES;
+};
+
+function ensureAccountStatus<T extends IAccountStatus>(
+  user: T | null | undefined,
+  opts: { requireVerified?: boolean; allowUser?: boolean } = {},
+): asserts user is T {
+  const { requireVerified = true, allowUser = false } = opts;
+  if (!user) throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
+  if (requireVerified && !user.verified) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'Please verify your account, then try to login again',
     );
   }
-
-  //check user status
-  if (isExistUser.status === 'ban') {
+  if (user.status === 'ban') {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
-      'You don’t have permission to access this content.It looks like your account has been deactivated.',
+      'You don’t have permission to access this content. It looks like your account has been deactivated.',
     );
   }
+  if (!allowUser && !ADMIN_ROLES.has(user.role)) {
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      'Password login is restricted to administrators. Please use the passwordless sign-in flow.',
+    );
+  }
+}
 
-  //check match password
+const hashOtp = async (otp: number | string): Promise<string> =>
+  bcrypt.hash(String(otp), Number(config.bcrypt_salt_rounds));
+
+const buildLoginOtpDoc = async (
+  plainOtp: number,
+  extra?: Partial<Pick<ILoginOtp, 'resentCount' | 'attemptCount'>>,
+): Promise<ILoginOtp> => ({
+  hashedCode: await hashOtp(plainOtp),
+  expireAt: new Date(Date.now() + OTP_TTL_MS),
+  generatedAt: new Date(),
+  consumed: false,
+  consumedAt: undefined,
+  attemptCount: extra?.attemptCount ?? 0,
+  resentCount: extra?.resentCount ?? 0,
+});
+
+const enforceResendCooldown = (otpDoc?: ILoginOtp) => {
+  if (!otpDoc || !otpDoc.generatedAt) return;
+  const now = Date.now();
+  const earliestNext = otpDoc.generatedAt.getTime() + OTP_RESEND_COOLDOWN_MS;
+  if (now < earliestNext) {
+    const secs = Math.ceil((earliestNext - now) / 1000);
+    throw new ApiError(
+      StatusCodes.TOO_MANY_REQUESTS,
+      `Please wait ${secs}s before requesting a new code.`,
+    );
+  }
+};
+
+// ----------------- PASSWORD LOGIN (ADMIN / SUPER_ADMIN ONLY) -----------------
+const loginUserFromDB = async (payload: ILoginData) => {
+  const { email, password } = payload;
+  const isExistUser = await User.findOne({ email }).select('+password');
+  ensureAccountStatus(isExistUser, { allowUser: false });
+
   if (password) {
     if (
       !isExistUser.password ||
@@ -51,31 +132,229 @@ const loginUserFromDB = async (payload: ILoginData) => {
     }
   }
 
-  //create access token
-  const accessToken = jwtHelper.createToken(
-    { id: isExistUser._id, role: isExistUser.role, email: isExistUser.email },
-    config.jwt.jwt_secret as Secret,
-    config.jwt.jwt_expire_in as string,
-  );
-
-  //create refresh token
-  const refreshToken = jwtHelper.createToken(
-    { id: isExistUser._id, role: isExistUser.role, email: isExistUser.email },
-    config.jwt.jwt_refresh_secret as Secret,
-    config.jwt.jwt_refresh_expire_in as string,
-  );
-
-  return { accessToken, refreshToken };
+  logger.info(`[AUTH] Password login successful for admin ${email}`);
+  return buildAuthTokens(isExistUser);
 };
 
-//forget password
+// ----------------- PASSWORDLESS LOGIN OTP FLOW -----------------
+const requestLoginOtpToDB = async (payload: IRequestLoginOtp) => {
+  const email = payload.email.toLowerCase().trim();
+  const user = await User.findOne({ email }).select('+loginOtp');
+  // Security best practice: do NOT reveal whether an account exists.
+  // Use a fake delay so response timing is similar whether exists or not.
+  if (!user) {
+    logger.warn(
+      `[AUTH] Passwordless login requested for non-existent email: ${email}`,
+    );
+    // Wait a small amount to avoid email enumeration via timing.
+    await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
+    return {
+      message:
+        'If an account with this email exists, we have sent a one-time sign-in code.',
+    };
+  }
+
+  ensureAccountStatus(user, { allowUser: true });
+
+  enforceResendCooldown(user.loginOtp);
+
+  const plainOtp = generateOTP();
+  const otpDoc = await buildLoginOtpDoc(plainOtp, {
+    resentCount: user.loginOtp?.resentCount ?? 0,
+  });
+
+  await User.findByIdAndUpdate(user._id, { $set: { loginOtp: otpDoc } });
+
+  try {
+    const emailData = emailTemplate.loginOtp({
+      email: user.email,
+      name: user.name,
+      otp: plainOtp,
+    });
+    await emailHelper.sendEmail(emailData);
+    logger.info(
+      `[AUTH] Passwordless OTP generated & emailed to ${email} (expires ${OTP_TTL_MS / 60000}m)`,
+    );
+  } catch (err) {
+    errorLogger.error(`[AUTH] Failed to send login OTP email to ${email}`, err);
+    throw new ApiError(
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      'Failed to send sign-in code. Please try again later.',
+    );
+  }
+
+  return {
+    message:
+      'If an account with this email exists, we have sent a one-time sign-in code.',
+  };
+};
+
+const resendLoginOtpToDB = async (payload: IResendLoginOtp) => {
+  const email = payload.email.toLowerCase().trim();
+  const user = await User.findOne({ email }).select('+loginOtp');
+  if (!user) {
+    logger.warn(
+      `[AUTH] Resend login OTP requested for non-existent email: ${email}`,
+    );
+    await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
+    return {
+      message:
+        'If an account with this email exists, we have sent a new one-time sign-in code.',
+    };
+  }
+  ensureAccountStatus(user, { allowUser: true });
+  enforceResendCooldown(user.loginOtp);
+
+  const plainOtp = generateOTP();
+  const nextResentCount = (user.loginOtp?.resentCount ?? 0) + 1;
+  const otpDoc = await buildLoginOtpDoc(plainOtp, {
+    resentCount: nextResentCount,
+  });
+
+  await User.findByIdAndUpdate(user._id, { $set: { loginOtp: otpDoc } });
+
+  try {
+    const emailData = emailTemplate.loginOtp({
+      email: user.email,
+      name: user.name,
+      otp: plainOtp,
+    });
+    await emailHelper.sendEmail(emailData);
+    logger.info(
+      `[AUTH] Resend login OTP emailed to ${email} (resentCount=${nextResentCount})`,
+    );
+  } catch (err) {
+    errorLogger.error(
+      `[AUTH] Failed to resend login OTP email to ${email}`,
+      err,
+    );
+    throw new ApiError(
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      'Failed to send sign-in code. Please try again later.',
+    );
+  }
+
+  return {
+    message:
+      'If an account with this email exists, we have sent a new one-time sign-in code.',
+  };
+};
+
+const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
+  const email = payload.email.toLowerCase().trim();
+  const { oneTimeCode } = payload;
+
+  const user = await User.findOne({ email }).select('+loginOtp');
+  if (!user) {
+    logger.warn(
+      `[AUTH] Login OTP verify attempted for non-existent email: ${email}`,
+    );
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'Invalid or expired one-time code. Please request a new code.',
+    );
+  }
+  ensureAccountStatus(user, { allowUser: true });
+
+  const otp = user.loginOtp;
+  if (!otp || !otp.hashedCode) {
+    logger.warn(
+      `[AUTH] Login OTP verify attempted for ${email} with no pending OTP`,
+    );
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'Invalid or expired one-time code. Please request a new code.',
+    );
+  }
+
+  // 1) Attempts exhaustion check BEFORE compare (so brute forcing new code per-attempt fails once locked)
+  if (otp.attemptCount >= OTP_MAX_ATTEMPTS) {
+    logger.warn(
+      `[AUTH] Login OTP attempt limit reached for ${email} (attempts=${otp.attemptCount})`,
+    );
+    // Invalidate the OTP immediately so it can't be reused
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'loginOtp.hashedCode': null,
+        'loginOtp.expireAt': new Date(0),
+      },
+    });
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'Too many incorrect attempts. Please request a new sign-in code.',
+    );
+  }
+
+  // Pre-emptively bump attemptCount (idempotent; re-checks after compare)
+  const nextAttempts = otp.attemptCount + 1;
+
+  // 2) Expiration
+  if (new Date() > otp.expireAt) {
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'loginOtp.attemptCount': nextAttempts,
+      },
+    });
+    logger.warn(`[AUTH] Login OTP expired for ${email}`);
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'One-time code has expired. Please request a new code.',
+    );
+  }
+
+  // 3) Single-use
+  if (otp.consumed) {
+    logger.warn(`[AUTH] Login OTP already consumed for ${email}`);
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'This one-time code has already been used. Please request a new code.',
+    );
+  }
+
+  // 4) Hash match
+  const matches = await User.isMatchHashedOtp(oneTimeCode, otp.hashedCode);
+  if (!matches) {
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'loginOtp.attemptCount': nextAttempts,
+      },
+    });
+    logger.warn(
+      `[AUTH] Login OTP mismatch for ${email} (attempt ${nextAttempts}/${OTP_MAX_ATTEMPTS})`,
+    );
+    const remaining = OTP_MAX_ATTEMPTS - nextAttempts;
+    const suffix =
+      remaining > 0
+        ? ` You have ${remaining} attempt${remaining === 1 ? '' : 's'} left.`
+        : '';
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      `Incorrect one-time code.${suffix}`,
+    );
+  }
+
+  // 5) Success — mark OTP consumed immediately
+  await User.findByIdAndUpdate(user._id, {
+    $set: {
+      'loginOtp.consumed': true,
+      'loginOtp.consumedAt': new Date(),
+      'loginOtp.attemptCount': nextAttempts,
+    },
+  });
+
+  logger.info(
+    `[AUTH] Passwordless login OTP verified for ${email} (role=${user.role})`,
+  );
+  return buildAuthTokens(user);
+};
+
+// ----------------- EXISTING FORGET / RESET / VERIFY-EMAIL ETC -----------------
 const forgetPasswordToDB = async (email: string) => {
   const isExistUser = await User.isExistUserByEmail(email);
   if (!isExistUser) {
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
 
-  //send mail
   const otp = generateOTP();
   const value = {
     otp,
@@ -84,7 +363,6 @@ const forgetPasswordToDB = async (email: string) => {
   const forgetPassword = emailTemplate.resetPassword(value);
   emailHelper.sendEmail(forgetPassword);
 
-  //save to DB
   const authentication = {
     oneTimeCode: otp,
     expireAt: new Date(Date.now() + 3 * 60000),
@@ -92,7 +370,6 @@ const forgetPasswordToDB = async (email: string) => {
   await User.findOneAndUpdate({ email }, { $set: { authentication } });
 };
 
-//verify email
 const verifyEmailToDB = async (payload: IVerifyEmail) => {
   const { email, oneTimeCode } = payload;
   const isExistUser = await User.findOne({ email }).select('+authentication');
@@ -140,7 +417,6 @@ const verifyEmailToDB = async (payload: IVerifyEmail) => {
       },
     );
 
-    //create token ;
     const createToken = cryptoToken();
     await ResetToken.create({
       user: isExistUser._id,
@@ -154,19 +430,16 @@ const verifyEmailToDB = async (payload: IVerifyEmail) => {
   return { data, message };
 };
 
-//forget password
 const resetPasswordToDB = async (
   token: string,
   payload: IAuthResetPassword,
 ) => {
   const { newPassword, confirmPassword } = payload;
-  //isExist token
   const isExistToken = await ResetToken.isExistToken(token);
   if (!isExistToken) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, 'You are not authorized');
   }
 
-  //user permission check
   const isExistUser = await User.findById(isExistToken.user).select(
     '+authentication',
   );
@@ -177,7 +450,6 @@ const resetPasswordToDB = async (
     );
   }
 
-  //validity check
   const isValid = await ResetToken.isExpireToken(token);
   if (!isValid) {
     throw new ApiError(
@@ -186,7 +458,6 @@ const resetPasswordToDB = async (
     );
   }
 
-  //check password
   if (newPassword !== confirmPassword) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
@@ -221,7 +492,6 @@ const changePasswordToDB = async (
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
 
-  //current password match
   if (
     currentPassword &&
     (!isExistUser.password ||
@@ -230,14 +500,12 @@ const changePasswordToDB = async (
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Password is incorrect');
   }
 
-  //newPassword and current password
   if (currentPassword === newPassword) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'Please give different password from current password',
     );
   }
-  //new password and confirm password check
   if (newPassword !== confirmPassword) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
@@ -245,7 +513,6 @@ const changePasswordToDB = async (
     );
   }
 
-  //hash password
   const hashPassword = await bcrypt.hash(
     newPassword,
     Number(config.bcrypt_salt_rounds),
@@ -257,22 +524,12 @@ const changePasswordToDB = async (
   await User.findOneAndUpdate({ _id: user.id }, updateData, { new: true });
 };
 
-// resend otp
 const resendOtpToDB = async (email: string) => {
   const isExistUser = await User.findOne({ email });
   if (!isExistUser) {
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
 
-  // If user already verified, no need to resend
-  // if (isExistUser.verified) {
-  //   throw new ApiError(
-  //     StatusCodes.BAD_REQUEST,
-  //     'Your account is already verified'
-  //   );
-  // }
-
-  //generate new otp
   const otp = generateOTP();
   const values = {
     name: isExistUser.name,
@@ -283,10 +540,9 @@ const resendOtpToDB = async (email: string) => {
   const resendTemplate = emailTemplate.createAccount(values);
   emailHelper.sendEmail(resendTemplate);
 
-  //save otp to DB
   const authentication = {
     oneTimeCode: otp,
-    expireAt: new Date(Date.now() + 3 * 60000), // 3 minutes expiry
+    expireAt: new Date(Date.now() + 3 * 60000),
   };
 
   await User.findOneAndUpdate(
@@ -298,7 +554,6 @@ const resendOtpToDB = async (email: string) => {
 };
 
 const refreshTokenToDB = async (token: string) => {
-  //verify token
   let verifiedToken;
   try {
     verifiedToken = jwtHelper.verifyToken(
@@ -314,13 +569,11 @@ const refreshTokenToDB = async (token: string) => {
 
   const { id } = verifiedToken;
 
-  //check user exist
   const isExistUser = await User.findById(id);
   if (!isExistUser) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, "User doesn't exist!");
   }
 
-  //check user status
   if (isExistUser.status === 'ban') {
     throw new ApiError(
       StatusCodes.UNAUTHORIZED,
@@ -335,9 +588,12 @@ const refreshTokenToDB = async (token: string) => {
     );
   }
 
-  //generate new access token
   const accessToken = jwtHelper.createToken(
-    { id: isExistUser._id, role: isExistUser.role, email: isExistUser.email },
+    {
+      id: isExistUser._id.toString(),
+      role: isExistUser.role,
+      email: isExistUser.email,
+    },
     config.jwt.jwt_secret as Secret,
     config.jwt.jwt_expire_in as string,
   );
@@ -348,6 +604,9 @@ const refreshTokenToDB = async (token: string) => {
 export const AuthService = {
   verifyEmailToDB,
   loginUserFromDB,
+  requestLoginOtpToDB,
+  resendLoginOtpToDB,
+  verifyLoginOtpToDB,
   forgetPasswordToDB,
   resetPasswordToDB,
   changePasswordToDB,

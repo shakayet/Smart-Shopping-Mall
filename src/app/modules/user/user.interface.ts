@@ -3,6 +3,22 @@
 import { Model } from 'mongoose';
 import { USER_ROLES } from '../../../enums/user';
 
+export type IAuthentication = {
+  isResetPassword: boolean;
+  oneTimeCode: number;
+  expireAt: Date;
+};
+
+export type ILoginOtp = {
+  hashedCode: string;
+  expireAt: Date;
+  generatedAt: Date;
+  consumed: boolean;
+  consumedAt?: Date;
+  attemptCount: number;
+  resentCount: number;
+};
+
 export type IUser = {
   name: string;
   role: USER_ROLES;
@@ -16,15 +32,13 @@ export type IUser = {
   providerId?: string;
   status: 'active' | 'ban';
   verified: boolean;
-  authentication?: {
-    isResetPassword: boolean;
-    oneTimeCode: number;
-    expireAt: Date;
-  };
+  authentication?: IAuthentication;
+  loginOtp?: ILoginOtp;
 };
 
 export type UserModal = {
   isExistUserById(id: string): any;
   isExistUserByEmail(email: string): any;
-  isMatchPassword(password: string, hashPassword: string): boolean;
+  isMatchPassword(password: string, hashPassword: string): Promise<boolean>;
+  isMatchHashedOtp(plainOtp: number | string, hashedOtp: string): Promise<boolean>;
 } & Model<IUser>;

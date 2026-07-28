@@ -1,6 +1,7 @@
 import config from '../config';
 import {
   ICreateAccount,
+  ILoginOtp,
   IReportStatusEmail,
   IResetPassword,
 } from '../types/emailTamplate';
@@ -217,6 +218,31 @@ const resetPassword = (values: IResetPassword) => {
   return data;
 };
 
+const loginOtp = (values: ILoginOtp) => {
+  const projectName = getProjectName();
+
+  const bodyContent = `
+    <p style="margin: 0 0 10px; color: #d1d5db;">
+      Hey ${values.name}, use the one-time passcode below to sign in to your ${projectName} account.
+    </p>
+    <div class="otp-box">${values.otp}</div>
+    <p style="margin: 8px 0 4px; color: #9ca3af;">
+      Code expires in 5 minutes and can only be used once.
+    </p>
+    <p style="margin: 16px 0 0; color: #6b7280;">
+      If you did not request this, ignore this email and your account will remain secure.
+    </p>
+  `;
+
+  const data = {
+    to: values.email,
+    subject: `Your ${projectName} sign-in code`,
+    html: baseTemplate('Sign in to your account', bodyContent),
+  };
+
+  return data;
+};
+
 const reportStatusUpdate = (values: IReportStatusEmail) => {
   const projectName = getProjectName();
 
@@ -360,6 +386,7 @@ const issueResolved = (values: IIssueResolvedEmail) => {
 export const emailTemplate = {
   createAccount,
   resetPassword,
+  loginOtp,
   reportStatusUpdate,
   issueCreated,
   issueResolved,

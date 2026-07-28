@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const Stripe=require\\('stripe'\\); console.log\\(typeof Stripe\\)\")",
+      "Bash(npm run *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :5001)"
+    ]
+  }
+}

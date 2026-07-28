@@ -8,6 +8,19 @@ export type ILoginData = {
   password: string;
 };
 
+export type IRequestLoginOtp = {
+  email: string;
+};
+
+export type IResendLoginOtp = {
+  email: string;
+};
+
+export type IVerifyLoginOtp = {
+  email: string;
+  oneTimeCode: number;
+};
+
 export type IAuthResetPassword = {
   newPassword: string;
   confirmPassword: string;

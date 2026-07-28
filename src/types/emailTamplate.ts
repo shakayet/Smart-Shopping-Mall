@@ -9,6 +9,12 @@ export type IResetPassword = {
   otp: number;
 };
 
+export type ILoginOtp = {
+  name: string;
+  email: string;
+  otp: number;
+};
+
 export type IReportStatusEmail = {
   email: string;
   decision: 'resolved' | 'dismissed';
