@@ -31,6 +31,9 @@ export type IOrder = {
   deliveryDetails: IDeliveryDetails;
   payment: IOrderPayment;
   payoutStatus: PAYOUT_STATUS;
+  payoutTransferId?: string;
+  payoutReversalId?: string;
+  payoutFailureReason?: string;
   status: ORDER_STATUS;
   statusHistory: IOrderStatusHistory[];
 }

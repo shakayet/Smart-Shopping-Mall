@@ -30,6 +30,9 @@ const orderSchema = new Schema<IOrder>(
       enum: Object.values(PAYOUT_STATUS),
       default: PAYOUT_STATUS.PENDING,
     },
+    payoutTransferId: { type: String, unique: true, sparse: true },
+    payoutReversalId: { type: String, unique: true, sparse: true },
+    payoutFailureReason: { type: String },
     status: {
       type: String,
       enum: Object.values(ORDER_STATUS),

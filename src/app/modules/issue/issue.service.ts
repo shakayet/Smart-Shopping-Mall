@@ -6,13 +6,21 @@ import { Issue } from './issue.model';
 import { Product } from '../product/product.model';
 import { Order } from '../order/order.model';
 import { User } from '../user/user.model';
-import { createRefund } from '../../../integrations/stripe';
-import { PAYMENT_STATUS } from '../../../enums/order';
+import {
+  createRefund,
+  reverseSellerTransfer,
+} from '../../../integrations/stripe';
+import {
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+  PAYOUT_STATUS,
+} from '../../../enums/order';
 import { emailHelper } from '../../../helpers/emailHelper';
 import { emailTemplate } from '../../../shared/emailTemplate';
 import { deleteFromS3 } from '../../../helpers/s3Helper';
 import { cache } from '../../../helpers/cache';
 import { PRODUCT_LIST_CACHE_PREFIX } from '../product/product.service';
+import { Types } from 'mongoose';
 
 const createIssue = async (
   productId: string,
@@ -49,11 +57,27 @@ const createIssue = async (
   // Refund buyer if payment was made
   const refunded = !!(order && order.payment.status === PAYMENT_STATUS.PAID);
   if (refunded && order) {
+    if (order.payoutTransferId && order.payoutStatus === PAYOUT_STATUS.PAID) {
+      const reversal = await reverseSellerTransfer(
+        order.payoutTransferId,
+        order.sellerPayout,
+        order.orderNumber,
+      );
+      order.payoutReversalId = reversal.id;
+      order.payoutStatus = PAYOUT_STATUS.REVERSED;
+    }
     await createRefund(
       order.payment.paymentIntentId,
       `order-refund:${order._id.toString()}`,
     );
     order.payment.status = PAYMENT_STATUS.REFUNDED;
+    order.status = ORDER_STATUS.REFUNDED;
+    order.statusHistory.push({
+      status: ORDER_STATUS.REFUNDED,
+      note: 'Refunded because an issue was created',
+      changedAt: new Date(),
+      changedBy: new Types.ObjectId(adminId),
+    });
     await order.save();
   }
 

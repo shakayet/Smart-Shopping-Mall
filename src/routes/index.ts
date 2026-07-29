@@ -7,6 +7,7 @@ import { WishlistRoutes } from '../app/modules/wishlist/wishlist.route';
 import { OrderRoutes } from '../app/modules/order/order.route';
 import { AIRoutes } from '../app/modules/ai/ai.route';
 import { IssueRoutes } from '../app/modules/issue/issue.route';
+import { PaymentRoutes } from '../app/modules/payment/payment.route';
 const router = express.Router();
 
 const apiRoutes = [
@@ -41,6 +42,10 @@ const apiRoutes = [
   {
     path: '/issues',
     route: IssueRoutes,
+  },
+  {
+    path: '/payment',
+    route: PaymentRoutes,
   },
 ];
 

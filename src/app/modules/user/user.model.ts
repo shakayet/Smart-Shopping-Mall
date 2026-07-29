@@ -112,6 +112,12 @@ const userSchema = new Schema<IUser, UserModal>(
       type: Boolean,
       default: false,
     },
+    stripeAccountId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      select: false,
+    },
     authentication: {
       type: authenticationSchema,
       select: 0,

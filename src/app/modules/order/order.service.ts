@@ -14,6 +14,10 @@ import {
   createPaymentIntent,
   createRefund,
 } from '../../../integrations/stripe';
+import {
+  createSellerTransfer,
+  retrieveConnectedAccount,
+} from '../../../integrations/stripe';
 import QueryBuilder from '../../builder/QueryBuilder';
 import { Product } from '../product/product.model';
 import {
@@ -22,6 +26,7 @@ import {
 } from './order.constant';
 import { IDeliveryDetails } from './order.interface';
 import { Order } from './order.model';
+import { User } from '../user/user.model';
 
 const generateOrderNumber = () => {
   const random = Math.floor(100 + Math.random() * 900);
@@ -38,11 +43,7 @@ const checkoutOrder = async (
     throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
   }
 
-  if (
-    product.status !== 'available' &&
-    (!product.reservationExpiresAt ||
-      product.reservationExpiresAt.getTime() > Date.now())
-  ) {
+  if (product.status !== 'available') {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'This item is no longer available',
@@ -66,10 +67,7 @@ const checkoutOrder = async (
   const reservedProduct = await Product.findOneAndUpdate(
     {
       _id: product._id,
-      $or: [
-        { status: 'available' },
-        { status: 'secured', reservationExpiresAt: { $lte: new Date() } },
-      ],
+      status: 'available',
     },
     {
       $set: {
@@ -133,11 +131,72 @@ const checkoutOrder = async (
   }
 };
 
-const handlePaymentSucceeded = async (paymentIntentId: string) => {
+type SuccessfulPayment = {
+  id: string;
+  amountReceived: number;
+  currency: string;
+  metadata: Record<string, string>;
+};
+
+export const paymentMatchesOrder = (
+  payment: SuccessfulPayment,
+  order: {
+    price: number;
+    orderNumber: string;
+    productId: string;
+    buyerId: string;
+  },
+  currency: string,
+) =>
+  payment.amountReceived === Math.round(order.price * 100) &&
+  payment.currency.toLowerCase() === currency.toLowerCase() &&
+  payment.metadata.orderNumber === order.orderNumber &&
+  payment.metadata.productId === order.productId &&
+  payment.metadata.buyerId === order.buyerId;
+
+const handlePaymentSucceeded = async (payment: SuccessfulPayment) => {
+  const paymentIntentId = payment.id;
+  const expectedOrder = await Order.findOne({
+    'payment.paymentIntentId': paymentIntentId,
+  });
+  if (!expectedOrder) return;
+
+  const validPayment = paymentMatchesOrder(
+    payment,
+    {
+      price: expectedOrder.price,
+      orderNumber: expectedOrder.orderNumber,
+      productId: expectedOrder.product.toString(),
+      buyerId: expectedOrder.buyer.toString(),
+    },
+    config.stripe.currency,
+  );
+  if (!validPayment) {
+    await createRefund(
+      paymentIntentId,
+      `invalid-payment-refund:${expectedOrder._id.toString()}`,
+    );
+    await Order.findByIdAndUpdate(expectedOrder._id, {
+      $set: {
+        'payment.status': PAYMENT_STATUS.REFUNDED,
+        status: ORDER_STATUS.REFUNDED,
+      },
+    });
+    await Product.findOneAndUpdate(
+      { _id: expectedOrder.product, buyer: expectedOrder.buyer },
+      {
+        $set: { status: 'available' },
+        $unset: { buyer: 1, reservationExpiresAt: 1 },
+      },
+    );
+    return;
+  }
+
   const order = await Order.findOneAndUpdate(
     {
       'payment.paymentIntentId': paymentIntentId,
       'payment.status': PAYMENT_STATUS.PENDING,
+      status: ORDER_STATUS.PENDING_PAYMENT,
     },
     {
       $set: {
@@ -154,6 +213,16 @@ const handlePaymentSucceeded = async (paymentIntentId: string) => {
     { new: true },
   );
   if (!order) {
+    const staleOrder = await Order.findOne({
+      'payment.paymentIntentId': paymentIntentId,
+      status: { $in: [ORDER_STATUS.CANCELLED, ORDER_STATUS.REFUNDED] },
+    });
+    if (staleOrder) {
+      await createRefund(
+        paymentIntentId,
+        `late-payment-refund:${staleOrder._id.toString()}`,
+      );
+    }
     return;
   }
 
@@ -280,6 +349,10 @@ const updateOrderStatus = async (
     });
   }
 
+  if (targetStatus === ORDER_STATUS.PAYOUT_PROCESSING) {
+    await paySeller(order);
+  }
+
   if (
     targetStatus === ORDER_STATUS.COMPLETED ||
     targetStatus === ORDER_STATUS.DELIVERED
@@ -300,30 +373,65 @@ const updateOrderStatus = async (
   return order;
 };
 
+const paySeller = async (order: InstanceType<typeof Order>) => {
+  if (order.payoutStatus === PAYOUT_STATUS.PAID) return order;
+  if (
+    order.status !== ORDER_STATUS.VERIFICATION &&
+    order.status !== ORDER_STATUS.PAYOUT_PROCESSING
+  ) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'Seller payout is only available after verification',
+    );
+  }
+  if (order.payment.status !== PAYMENT_STATUS.PAID) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'The buyer payment is not settled');
+  }
+
+  const seller = await User.findById(order.seller).select('+stripeAccountId');
+  if (!seller?.stripeAccountId) {
+    throw new ApiError(
+      StatusCodes.CONFLICT,
+      'Seller has not connected a Stripe payout account',
+    );
+  }
+  const account = await retrieveConnectedAccount(seller.stripeAccountId);
+  if (!account.details_submitted || !account.payouts_enabled) {
+    throw new ApiError(
+      StatusCodes.CONFLICT,
+      'Seller Stripe onboarding is incomplete or payouts are disabled',
+    );
+  }
+
+  order.payoutStatus = PAYOUT_STATUS.PROCESSING;
+  order.payoutFailureReason = undefined;
+  await order.save();
+  try {
+    const transfer = await createSellerTransfer(
+      order.sellerPayout,
+      seller.stripeAccountId,
+      order.orderNumber,
+    );
+    order.payoutTransferId = transfer.id;
+    order.payoutStatus = PAYOUT_STATUS.PAID;
+    await order.save();
+    return order;
+  } catch (error) {
+    order.payoutStatus = PAYOUT_STATUS.FAILED;
+    order.payoutFailureReason =
+      error instanceof Error ? error.message : 'Stripe transfer failed';
+    await order.save();
+    throw error;
+  }
+};
+
 const markPayoutPaid = async (orderId: string) => {
   const order = await Order.findById(orderId);
   if (!order) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Order not found');
   }
 
-  if (
-    order.status === ORDER_STATUS.PENDING_PAYMENT ||
-    order.status === ORDER_STATUS.SECURED ||
-    order.status === ORDER_STATUS.COLLECTION_PENDING ||
-    order.status === ORDER_STATUS.COLLECTED ||
-    order.status === ORDER_STATUS.VERIFICATION ||
-    order.status === ORDER_STATUS.REFUNDED ||
-    order.status === ORDER_STATUS.CANCELLED
-  ) {
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      'Payout can only be marked once the item has passed verification',
-    );
-  }
-
-  order.payoutStatus = PAYOUT_STATUS.PAID;
-  await order.save();
-  return order;
+  return paySeller(order);
 };
 
 const cancelOrder = async (orderId: string, buyerId: string) => {
@@ -339,11 +447,52 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
     );
   }
 
-  if (order.status !== ORDER_STATUS.SECURED) {
+  if (
+    order.status !== ORDER_STATUS.SECURED &&
+    order.status !== ORDER_STATUS.PENDING_PAYMENT
+  ) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
-      'Order can only be cancelled before it has been collected for verification',
+      'Order can only be cancelled before collection',
     );
+  }
+
+  if (order.status === ORDER_STATUS.PENDING_PAYMENT) {
+    const cancelled = await Order.findOneAndUpdate(
+      {
+        _id: order._id,
+        buyer: buyerId,
+        status: ORDER_STATUS.PENDING_PAYMENT,
+        'payment.status': PAYMENT_STATUS.PENDING,
+      },
+      {
+        $set: { status: ORDER_STATUS.CANCELLED },
+        $push: {
+          statusHistory: {
+            status: ORDER_STATUS.CANCELLED,
+            changedAt: new Date(),
+          },
+        },
+      },
+      { new: true },
+    );
+    if (!cancelled) {
+      throw new ApiError(
+        StatusCodes.CONFLICT,
+        'The payment state changed; refresh the order and try again',
+      );
+    }
+    await cancelPaymentIntent(cancelled.payment.paymentIntentId).catch(
+      () => undefined,
+    );
+    await Product.findOneAndUpdate(
+      { _id: cancelled.product, buyer: cancelled.buyer },
+      {
+        $set: { status: 'available' },
+        $unset: { buyer: 1, reservationExpiresAt: 1 },
+      },
+    );
+    return cancelled;
   }
 
   if (order.payment.status === PAYMENT_STATUS.PAID) {
@@ -369,6 +518,41 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
   return order;
 };
 
+const expirePendingOrders = async () => {
+  const expired = await Order.find({
+    status: ORDER_STATUS.PENDING_PAYMENT,
+    createdAt: { $lte: new Date(Date.now() - 15 * 60 * 1000) },
+  }).select('_id');
+
+  for (const candidate of expired) {
+    const order = await Order.findOneAndUpdate(
+      { _id: candidate._id, status: ORDER_STATUS.PENDING_PAYMENT },
+      {
+        $set: { status: ORDER_STATUS.CANCELLED },
+        $push: {
+          statusHistory: {
+            status: ORDER_STATUS.CANCELLED,
+            note: 'Payment window expired',
+            changedAt: new Date(),
+          },
+        },
+      },
+      { new: true },
+    );
+    if (!order) continue;
+    await cancelPaymentIntent(order.payment.paymentIntentId).catch(
+      () => undefined,
+    );
+    await Product.findOneAndUpdate(
+      { _id: order.product, buyer: order.buyer },
+      {
+        $set: { status: 'available' },
+        $unset: { buyer: 1, reservationExpiresAt: 1 },
+      },
+    );
+  }
+};
+
 export const OrderService = {
   checkoutOrder,
   handlePaymentSucceeded,
@@ -379,4 +563,5 @@ export const OrderService = {
   updateOrderStatus,
   markPayoutPaid,
   cancelOrder,
+  expirePendingOrders,
 };

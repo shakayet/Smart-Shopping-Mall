@@ -3,6 +3,7 @@ const test = require('node:test');
 const { jwtHelper } = require('../dist/helpers/jwtHelper');
 const generateOTP = require('../dist/util/generateOTP').default;
 const cryptoToken = require('../dist/util/cryptoToken').default;
+const { toMinorUnits } = require('../dist/util/money');
 
 test('JWT helper signs and verifies the intended claims', () => {
   const secret = 'test-secret-that-is-longer-than-32-characters';
@@ -28,4 +29,9 @@ test('security tokens have sufficient entropy and are unique', () => {
   const tokens = new Set(Array.from({ length: 100 }, () => cryptoToken()));
   assert.equal(tokens.size, 100);
   for (const token of tokens) assert.equal(token.length >= 32, true);
+});
+
+test('Stripe amounts are converted to integer minor units', () => {
+  assert.equal(toMinorUnits(10.99), 1099);
+  assert.equal(toMinorUnits(0.1 + 0.2), 30);
 });

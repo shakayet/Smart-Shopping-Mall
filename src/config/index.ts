@@ -39,6 +39,7 @@ const envSchema = z
     STRIPE_SECRET_KEY: z.string().min(1),
     WEBHOOK_SECRET: z.string().min(1),
     STRIPE_CURRENCY: z.string().length(3).default('aed'),
+    API_PUBLIC_URL: z.string().url(),
     OPENAI_API_KEY: z.string().min(1),
     PLATFORM_FEE_PERCENTAGE: z.coerce.number().min(0).max(100).default(12),
     MAX_UPLOAD_BYTES: z.coerce
@@ -124,6 +125,8 @@ export default {
     secretKey: env.STRIPE_SECRET_KEY,
     webhookSecret: env.WEBHOOK_SECRET,
     currency: env.STRIPE_CURRENCY.toLowerCase(),
+    publicUrl: env.API_PUBLIC_URL.replace(/\/$/, ''),
+    connectCountry: 'AE',
   },
   openai: { apiKey: env.OPENAI_API_KEY },
   platform: { feePercentage: env.PLATFORM_FEE_PERCENTAGE },

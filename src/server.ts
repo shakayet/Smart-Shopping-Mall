@@ -5,11 +5,13 @@ import app from './app';
 import config from './config';
 import { seedSuperAdmin } from './DB/seedAdmin';
 import { socketHelper } from './helpers/socketHelper';
+import { OrderService } from './app/modules/order/order.service';
 import { errorLogger, logger } from './shared/logger';
 
 let httpServer: http.Server | undefined;
 let socketServer: SocketServer | undefined;
 let shuttingDown = false;
+let reservationTimer: ReturnType<typeof setInterval> | undefined;
 
 const shutdown = async (signal: string, exitCode = 0) => {
   if (shuttingDown) return;
@@ -23,6 +25,7 @@ const shutdown = async (signal: string, exitCode = 0) => {
   forceExit.unref();
 
   socketServer?.close();
+  if (reservationTimer) clearInterval(reservationTimer);
   if (httpServer) {
     await new Promise<void>(resolve => httpServer?.close(() => resolve()));
   }
@@ -51,6 +54,12 @@ const main = async () => {
     },
   });
   socketHelper.socket(socketServer);
+  reservationTimer = setInterval(() => {
+    void OrderService.expirePendingOrders().catch(error => {
+      errorLogger.error('Failed to expire pending orders', error);
+    });
+  }, 60_000);
+  reservationTimer.unref();
 };
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
