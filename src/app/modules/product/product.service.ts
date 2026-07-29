@@ -25,18 +25,24 @@ const createProductToDB = async (
   payload.orderId = nextOrderId;
 
   // Upload to S3
-  const imageUrl = await uploadToS3(files.image[0], 'product-images');
-
-  // Cleanup local image file
-  fs.unlinkSync(files.image[0].path);
+  let imageUrl: string;
+  try {
+    imageUrl = await uploadToS3(files.image[0], 'product-images');
+  } finally {
+    await fs.promises.unlink(files.image[0].path).catch(() => undefined);
+  }
 
   payload.image = imageUrl;
   payload.status = 'available';
 
   // Handle proof of purchase if provided
   if (files?.doc) {
-    const proofUrl = await uploadToS3(files.doc[0], 'product-proofs');
-    fs.unlinkSync(files.doc[0].path);
+    let proofUrl: string;
+    try {
+      proofUrl = await uploadToS3(files.doc[0], 'product-proofs');
+    } finally {
+      await fs.promises.unlink(files.doc[0].path).catch(() => undefined);
+    }
     payload.proofOfPurchase = proofUrl;
   }
 

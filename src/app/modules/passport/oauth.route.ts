@@ -2,6 +2,7 @@ import express, { Router } from 'express';
 import passport from 'passport';
 import { OAuthController } from './oauth.controller';
 import auth from '../../middlewares/auth';
+import { authLimiter } from '../../middlewares/rateLimiter';
 
 /**
  * OAuth Routes
@@ -23,6 +24,8 @@ router.get(
     scope: ['profile', 'email'],
   }),
 );
+
+router.post('/exchange', authLimiter, OAuthController.exchangeCode);
 
 // Google OAuth callback
 // Called by Google after user authorization

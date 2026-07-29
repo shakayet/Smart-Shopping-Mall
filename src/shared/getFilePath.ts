@@ -1,10 +1,16 @@
+/* eslint-disable no-undef */
 type IFolderName = 'image' | 'media' | 'doc';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type UploadedFiles =
+  | { [fieldname: string]: Express.Multer.File[] }
+  | Express.Multer.File[]
+  | undefined;
+
 export const getSingleFilePath = (
-  files: any,
+  files: UploadedFiles,
   folderName: IFolderName,
 ): string | undefined => {
+  if (!files || Array.isArray(files)) return undefined;
   const fileField = files?.[folderName];
   if (fileField && Array.isArray(fileField) && fileField.length > 0) {
     return `/${folderName}/${fileField[0].filename}`;
@@ -13,14 +19,14 @@ export const getSingleFilePath = (
   return undefined;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const getMultipleFilesPath = (
-  files: any,
+  files: UploadedFiles,
   folderName: IFolderName,
 ): string[] | undefined => {
+  if (!files || Array.isArray(files)) return undefined;
   const folderFiles = files?.[folderName];
   if (folderFiles && Array.isArray(folderFiles)) {
-    return folderFiles.map((file: any) => `/${folderName}/${file.filename}`);
+    return folderFiles.map(file => `/${folderName}/${file.filename}`);
   }
 
   return undefined;

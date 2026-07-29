@@ -49,7 +49,10 @@ const createIssue = async (
   // Refund buyer if payment was made
   const refunded = !!(order && order.payment.status === PAYMENT_STATUS.PAID);
   if (refunded && order) {
-    await createRefund(order.payment.paymentIntentId);
+    await createRefund(
+      order.payment.paymentIntentId,
+      `order-refund:${order._id.toString()}`,
+    );
     order.payment.status = PAYMENT_STATUS.REFUNDED;
     await order.save();
   }

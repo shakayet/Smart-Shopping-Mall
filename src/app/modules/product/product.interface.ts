@@ -15,4 +15,5 @@ export interface IProduct {
   seller: Types.ObjectId;
   orderId: number;
   buyer?: Types.ObjectId;
+  reservationExpiresAt?: Date;
 }

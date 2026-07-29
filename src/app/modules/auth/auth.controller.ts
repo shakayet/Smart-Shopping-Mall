@@ -116,9 +116,15 @@ const resendOtp = catchAsync(async (req: Request, res: Response) => {
 });
 
 const resetPassword = catchAsync(async (req: Request, res: Response) => {
-  const token = req.headers.authorization;
+  const authorization = req.headers.authorization;
+  const token = authorization?.startsWith('Bearer ')
+    ? authorization.slice(7)
+    : '';
+  if (!token) {
+    throw new ApiError(StatusCodes.UNAUTHORIZED, 'Reset token is required');
+  }
   const { ...resetData } = req.body;
-  const result = await AuthService.resetPasswordToDB(token!, resetData);
+  const result = await AuthService.resetPasswordToDB(token, resetData);
 
   sendResponse(res, {
     success: true,

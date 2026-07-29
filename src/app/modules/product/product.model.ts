@@ -17,6 +17,7 @@ const productSchema = new Schema<IProduct>(
     },
     seller: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     buyer: { type: Schema.Types.ObjectId, ref: 'User' },
+    reservationExpiresAt: { type: Date, default: null },
     orderId: { type: Number, required: true, unique: true },
   },
   {
@@ -29,5 +30,6 @@ const productSchema = new Schema<IProduct>(
 
 productSchema.index({ status: 1 });
 productSchema.index({ seller: 1 });
+productSchema.index({ status: 1, reservationExpiresAt: 1 });
 
 export const Product = model<IProduct>('Product', productSchema);

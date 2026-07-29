@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import fs from 'fs';
 import { StatusCodes } from 'http-status-codes';
 import ApiError from '../../../errors/ApiError';
@@ -9,8 +10,12 @@ const analyzeListingImage = async (file: Express.Multer.File | undefined) => {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Product image is required');
   }
 
-  const imageUrl = await uploadToS3(file, 'listing-analysis');
-  fs.unlinkSync(file.path);
+  let imageUrl: string;
+  try {
+    imageUrl = await uploadToS3(file, 'listing-analysis');
+  } finally {
+    await fs.promises.unlink(file.path).catch(() => undefined);
+  }
 
   const analysis = await analyzeProductImage(imageUrl);
 

@@ -3,3 +3,8 @@ node_modules
 
 /winston
 /uploads
+/dist
+/coverage
+/tmp_test
+test-product-image.png
+test-proof-of-purchase.pdf

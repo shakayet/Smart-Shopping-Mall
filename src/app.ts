@@ -4,6 +4,9 @@ import helmet from 'helmet';
 import { StatusCodes } from 'http-status-codes';
 import session from 'express-session';
 import passport from 'passport';
+import MongoStore from 'connect-mongo';
+import path from 'path';
+import mongoose from 'mongoose';
 import { initializePassport } from './config/passport';
 import config from './config';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
@@ -13,6 +16,8 @@ import { Morgan } from './shared/morgen';
 import { PaymentController } from './app/modules/payment/payment.controller';
 const app = express();
 
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 //morgan
 app.use(Morgan.successHandler);
 app.use(Morgan.errorHandler);
@@ -20,7 +25,18 @@ app.use(Morgan.errorHandler);
 //security headers
 app.use(helmet());
 
-app.use(cors({ origin: config.cors_origin, credentials: true }));
+app.use(
+  cors({
+    credentials: true,
+    origin(origin, callback) {
+      if (!origin || config.cors_origin.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origin is not allowed by CORS'));
+    },
+  }),
+);
 
 //Stripe webhook needs the raw request body, must be registered before express.json()
 app.post(
@@ -42,9 +58,16 @@ app.use(
     secret: config.oauth.sessionSecret,
     resave: false,
     saveUninitialized: false,
+    name: 'ssm.sid',
+    store: MongoStore.create({
+      mongoUrl: config.database_url,
+      ttl: 24 * 60 * 60,
+      touchAfter: 60 * 60,
+    }),
     cookie: {
       secure: config.node_env === 'production',
       httpOnly: true,
+      sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     },
   }),
@@ -55,8 +78,16 @@ initializePassport();
 app.use(passport.initialize());
 app.use(passport.session());
 
-//file retrieve
-app.use(express.static('uploads'));
+// Only profile images are public. Proofs and temporary AI inputs are never served.
+app.use(
+  '/image',
+  express.static(path.join(process.cwd(), 'uploads', 'image'), {
+    dotfiles: 'deny',
+    fallthrough: false,
+    index: false,
+    maxAge: config.node_env === 'production' ? '1d' : 0,
+  }),
+);
 
 //router
 app.use('/api/v1', router);
@@ -69,6 +100,17 @@ app.get('/', (req: Request, res: Response) => {
     <p style="text-align:center; color:#173616; font-family:Verdana;">${date}</p>
     `,
   );
+});
+
+app.get('/health/live', (_req: Request, res: Response) => {
+  res.status(StatusCodes.OK).json({ status: 'ok' });
+});
+
+app.get('/health/ready', (_req: Request, res: Response) => {
+  const ready = mongoose.connection.readyState === 1;
+  res.status(ready ? StatusCodes.OK : StatusCodes.SERVICE_UNAVAILABLE).json({
+    status: ready ? 'ready' : 'not_ready',
+  });
 });
 
 //global error handle

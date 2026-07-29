@@ -7,7 +7,8 @@ import handleZodError from '../../errors/handleZodError';
 import { errorLogger } from '../../shared/logger';
 import { IErrorMessage } from '../../types/errors.types';
 
-const globalErrorHandler: ErrorRequestHandler = (error, req, res, next) => {
+const globalErrorHandler: ErrorRequestHandler = (error, req, res, _next) => {
+  void _next;
   if (config.node_env === 'development') {
     errorLogger.info('🚨 globalErrorHandler ~~ ', error);
   } else {
@@ -52,7 +53,10 @@ const globalErrorHandler: ErrorRequestHandler = (error, req, res, next) => {
         ]
       : [];
   } else if (error instanceof Error) {
-    message = error.message;
+    message =
+      config.node_env === 'production'
+        ? 'Something went wrong'
+        : error.message;
     errorMessages = error.message
       ? [
           {

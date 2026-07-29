@@ -7,7 +7,7 @@ import { googleStrategy } from './google.strategy';
  * New strategies can be easily added here without refactoring other files
  */
 
-export interface StrategyConfig {
+export type StrategyConfig = {
   name: string;
   strategy: Strategy | null;
   enabled: boolean;

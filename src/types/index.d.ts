@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-definitions, no-undef */
 import { JwtPayload } from 'jsonwebtoken';
 
 declare global {

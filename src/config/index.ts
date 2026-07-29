@@ -1,65 +1,131 @@
-/* eslint-disable no-undef */
 import dotenv from 'dotenv';
 import path from 'path';
+import { z } from 'zod';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
+const optionalUrl = z.string().url().optional();
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    DATABASE_URL: z.string().min(1),
+    IP_ADDRESS: z.string().default('0.0.0.0'),
+    PORT: z.coerce.number().int().positive().max(65535).default(5000),
+    CORS_ORIGIN: z.string().min(1),
+    BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+    JWT_SECRET: z.string().min(32),
+    JWT_EXPIRE_IN: z.string().default('15m'),
+    JWT_REFRESH_SECRET: z.string().min(32),
+    JWT_REFRESH_EXPIRE_IN: z.string().default('30d'),
+    EMAIL_FROM: z.string().min(1),
+    EMAIL_USER: z.string().min(1),
+    EMAIL_PORT: z.coerce.number().int().positive(),
+    EMAIL_HOST: z.string().min(1),
+    EMAIL_PASS: z.string().min(1),
+    PROJECT_NAME: z.string().default('Smart Shopping Mall'),
+    BRAND_LOGO: optionalUrl,
+    SUPER_ADMIN_EMAIL: z.string().email(),
+    SUPER_ADMIN_PASSWORD: z.string().min(12),
+    GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+    GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_OAUTH_CALLBACK_URL: optionalUrl,
+    FRONTEND_OAUTH_CALLBACK_URL: optionalUrl,
+    SESSION_SECRET: z.string().min(32),
+    AWS_ACCESS_KEY_ID: z.string().min(1),
+    AWS_SECRET_ACCESS_KEY: z.string().min(1),
+    AWS_REGION: z.string().min(1),
+    AWS_BUCKET_NAME: z.string().min(1),
+    AWS_CLOUDFRONT_DOMAIN: z.string().min(1),
+    STRIPE_SECRET_KEY: z.string().min(1),
+    WEBHOOK_SECRET: z.string().min(1),
+    STRIPE_CURRENCY: z.string().length(3).default('aed'),
+    OPENAI_API_KEY: z.string().min(1),
+    PLATFORM_FEE_PERCENTAGE: z.coerce.number().min(0).max(100).default(12),
+    MAX_UPLOAD_BYTES: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10 * 1024 * 1024),
+  })
+  .superRefine((env, ctx) => {
+    const oauthValues = [
+      env.GOOGLE_OAUTH_CLIENT_ID,
+      env.GOOGLE_OAUTH_CLIENT_SECRET,
+      env.GOOGLE_OAUTH_CALLBACK_URL,
+      env.FRONTEND_OAUTH_CALLBACK_URL,
+    ];
+    if (oauthValues.some(Boolean) && !oauthValues.every(Boolean)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'All Google OAuth settings must be provided together',
+        path: ['GOOGLE_OAUTH_CLIENT_ID'],
+      });
+    }
+    if (env.NODE_ENV === 'production' && env.CORS_ORIGIN.includes('*')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'CORS_ORIGIN cannot contain * in production',
+        path: ['CORS_ORIGIN'],
+      });
+    }
+  });
+
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  const details = parsed.error.issues
+    .map(issue => `${issue.path.join('.')}: ${issue.message}`)
+    .join('; ');
+  throw new Error(`Invalid environment configuration: ${details}`);
+}
+
+const env = parsed.data;
+const corsOrigins = env.CORS_ORIGIN.split(',').map(origin => origin.trim());
+
 export default {
-  ip_address: process.env.IP_ADDRESS,
-  database_url: process.env.DATABASE_URL,
-  node_env: process.env.NODE_ENV,
-  port: process.env.PORT,
-  bcrypt_salt_rounds: process.env.BCRYPT_SALT_ROUNDS,
-  cors_origin: process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-    : '*',
-  branding: {
-    projectName: process.env.PROJECT_NAME,
-    logoUrl: process.env.BRAND_LOGO,
-  },
+  ip_address: env.IP_ADDRESS,
+  database_url: env.DATABASE_URL,
+  node_env: env.NODE_ENV,
+  port: env.PORT,
+  bcrypt_salt_rounds: env.BCRYPT_SALT_ROUNDS,
+  cors_origin: corsOrigins,
+  branding: { projectName: env.PROJECT_NAME, logoUrl: env.BRAND_LOGO },
   jwt: {
-    jwt_secret: process.env.JWT_SECRET,
-    jwt_expire_in: process.env.JWT_EXPIRE_IN,
-    jwt_refresh_secret: process.env.JWT_REFRESH_SECRET,
-    jwt_refresh_expire_in: process.env.JWT_REFRESH_EXPIRE_IN,
+    jwt_secret: env.JWT_SECRET,
+    jwt_expire_in: env.JWT_EXPIRE_IN,
+    jwt_refresh_secret: env.JWT_REFRESH_SECRET,
+    jwt_refresh_expire_in: env.JWT_REFRESH_EXPIRE_IN,
   },
   email: {
-    from: process.env.EMAIL_FROM,
-    user: process.env.EMAIL_USER,
-    port: process.env.EMAIL_PORT,
-    host: process.env.EMAIL_HOST,
-    pass: process.env.EMAIL_PASS,
+    from: env.EMAIL_FROM,
+    user: env.EMAIL_USER,
+    port: env.EMAIL_PORT,
+    host: env.EMAIL_HOST,
+    pass: env.EMAIL_PASS,
   },
-  super_admin: {
-    email: process.env.SUPER_ADMIN_EMAIL,
-    password: process.env.SUPER_ADMIN_PASSWORD,
-  },
+  super_admin: { email: env.SUPER_ADMIN_EMAIL, password: env.SUPER_ADMIN_PASSWORD },
   oauth: {
     google: {
-      clientID: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
-      callbackURL:
-        process.env.GOOGLE_OAUTH_CALLBACK_URL ||
-        'http://localhost:5000/api/v1/oauth/google/callback',
+      clientID: env.GOOGLE_OAUTH_CLIENT_ID ?? '',
+      clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET ?? '',
+      callbackURL: env.GOOGLE_OAUTH_CALLBACK_URL ?? '',
     },
-    sessionSecret: process.env.SESSION_SECRET || 'your_session_secret_key',
+    frontendCallbackURL: env.FRONTEND_OAUTH_CALLBACK_URL ?? '',
+    sessionSecret: env.SESSION_SECRET,
+    enabled: Boolean(env.GOOGLE_OAUTH_CLIENT_ID),
   },
   aws: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    region: process.env.AWS_REGION,
-    bucketName: process.env.AWS_BUCKET_NAME,
-    cloudfrontDomain: process.env.AWS_CLOUDFRONT_DOMAIN,
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    region: env.AWS_REGION,
+    bucketName: env.AWS_BUCKET_NAME,
+    cloudfrontDomain: env.AWS_CLOUDFRONT_DOMAIN,
   },
   stripe: {
-    secretKey: process.env.STRIPE_SECRET_KEY,
-    webhookSecret: process.env.WEBHOOK_SECRET,
-    currency: process.env.STRIPE_CURRENCY || 'aed',
+    secretKey: env.STRIPE_SECRET_KEY,
+    webhookSecret: env.WEBHOOK_SECRET,
+    currency: env.STRIPE_CURRENCY.toLowerCase(),
   },
-  openai: {
-    apiKey: process.env.OPENAI_API_KEY,
-  },
-  platform: {
-    feePercentage: Number(process.env.PLATFORM_FEE_PERCENTAGE) || 12,
-  },
-};
+  openai: { apiKey: env.OPENAI_API_KEY },
+  platform: { feePercentage: env.PLATFORM_FEE_PERCENTAGE },
+  uploads: { maxBytes: env.MAX_UPLOAD_BYTES },
+} as const;

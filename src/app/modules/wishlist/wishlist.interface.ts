@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 
-export interface IWishlist {
+export type IWishlist = {
   user: Types.ObjectId;
   product: Types.ObjectId;
 }

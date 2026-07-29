@@ -3,9 +3,10 @@ import { StatusCodes } from 'http-status-codes';
 import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
 import { IssueService } from './issue.service';
+import { JwtPayload } from 'jsonwebtoken';
 
 const createIssue = catchAsync(async (req: Request, res: Response) => {
-  const user = req.user as any;
+  const user = req.user as JwtPayload;
   const { productId, issueType, reason } = req.body;
 
   const result = await IssueService.createIssue(
@@ -24,7 +25,7 @@ const createIssue = catchAsync(async (req: Request, res: Response) => {
 });
 
 const resolveIssue = catchAsync(async (req: Request, res: Response) => {
-  const user = req.user as any;
+  const user = req.user as JwtPayload;
   const { action } = req.body;
 
   const result = await IssueService.resolveIssue(

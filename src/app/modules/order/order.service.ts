@@ -10,6 +10,7 @@ import {
 import { USER_ROLES } from '../../../enums/user';
 import ApiError from '../../../errors/ApiError';
 import {
+  cancelPaymentIntent,
   createPaymentIntent,
   createRefund,
 } from '../../../integrations/stripe';
@@ -37,7 +38,11 @@ const checkoutOrder = async (
     throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
   }
 
-  if (product.status !== 'available') {
+  if (
+    product.status !== 'available' &&
+    (!product.reservationExpiresAt ||
+      product.reservationExpiresAt.getTime() > Date.now())
+  ) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'This item is no longer available',
@@ -57,13 +62,41 @@ const checkoutOrder = async (
   const sellerPayout = Number((product.price - platformFee).toFixed(2));
   const orderNumber = generateOrderNumber();
 
-  const paymentIntent = await createPaymentIntent(product.price, {
-    orderNumber,
-    productId: String(product._id),
-    buyerId,
-  });
+  const reservationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const reservedProduct = await Product.findOneAndUpdate(
+    {
+      _id: product._id,
+      $or: [
+        { status: 'available' },
+        { status: 'secured', reservationExpiresAt: { $lte: new Date() } },
+      ],
+    },
+    {
+      $set: {
+        status: 'secured',
+        buyer: buyerId,
+        reservationExpiresAt,
+      },
+    },
+    { new: true },
+  );
+  if (!reservedProduct) {
+    throw new ApiError(StatusCodes.CONFLICT, 'This item is being purchased');
+  }
 
-  const order = await Order.create({
+  let paymentIntent: Awaited<ReturnType<typeof createPaymentIntent>> | undefined;
+  try {
+    paymentIntent = await createPaymentIntent(
+      product.price,
+      {
+        orderNumber,
+        productId: String(product._id),
+        buyerId,
+      },
+      `checkout:${orderNumber}`,
+    );
+
+    const order = await Order.create({
     orderNumber,
     product: product._id,
     buyer: buyerId,
@@ -82,30 +115,51 @@ const checkoutOrder = async (
     statusHistory: [
       { status: ORDER_STATUS.PENDING_PAYMENT, changedAt: new Date() },
     ],
-  });
+    });
 
-  return { order, clientSecret: paymentIntent.client_secret };
+    return { order, clientSecret: paymentIntent.client_secret };
+  } catch (error) {
+    if (paymentIntent) {
+      await cancelPaymentIntent(paymentIntent.id).catch(() => undefined);
+    }
+    await Product.findOneAndUpdate(
+      { _id: product._id, buyer: buyerId, reservationExpiresAt },
+      {
+        $set: { status: 'available' },
+        $unset: { buyer: 1, reservationExpiresAt: 1 },
+      },
+    );
+    throw error;
+  }
 };
 
 const handlePaymentSucceeded = async (paymentIntentId: string) => {
-  const order = await Order.findOne({
-    'payment.paymentIntentId': paymentIntentId,
-  });
-  if (!order || order.payment.status === PAYMENT_STATUS.PAID) {
+  const order = await Order.findOneAndUpdate(
+    {
+      'payment.paymentIntentId': paymentIntentId,
+      'payment.status': PAYMENT_STATUS.PENDING,
+    },
+    {
+      $set: {
+        'payment.status': PAYMENT_STATUS.PAID,
+        status: ORDER_STATUS.SECURED,
+      },
+      $push: {
+        statusHistory: {
+          status: ORDER_STATUS.SECURED,
+          changedAt: new Date(),
+        },
+      },
+    },
+    { new: true },
+  );
+  if (!order) {
     return;
   }
 
-  order.payment.status = PAYMENT_STATUS.PAID;
-  order.status = ORDER_STATUS.SECURED;
-  order.statusHistory.push({
-    status: ORDER_STATUS.SECURED,
-    changedAt: new Date(),
-  });
-  await order.save();
-
   await Product.findByIdAndUpdate(order.product, {
-    status: 'secured',
-    buyer: order.buyer,
+    $set: { status: 'secured', buyer: order.buyer },
+    $unset: { reservationExpiresAt: 1 },
   });
 };
 
@@ -119,6 +173,13 @@ const handlePaymentFailed = async (paymentIntentId: string) => {
 
   order.payment.status = PAYMENT_STATUS.FAILED;
   await order.save();
+  await Product.findOneAndUpdate(
+    { _id: order.product, buyer: order.buyer, status: 'secured' },
+    {
+      $set: { status: 'available' },
+      $unset: { buyer: 1, reservationExpiresAt: 1 },
+    },
+  );
 };
 
 const getMyOrders = async (
@@ -207,7 +268,10 @@ const updateOrderStatus = async (
 
   if (REFUND_TRIGGER_STATUSES.includes(targetStatus)) {
     if (order.payment.status === PAYMENT_STATUS.PAID) {
-      await createRefund(order.payment.paymentIntentId);
+      await createRefund(
+        order.payment.paymentIntentId,
+        `order-refund:${order._id.toString()}`,
+      );
       order.payment.status = PAYMENT_STATUS.REFUNDED;
     }
     await Product.findByIdAndUpdate(order.product, {
@@ -283,7 +347,10 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
   }
 
   if (order.payment.status === PAYMENT_STATUS.PAID) {
-    await createRefund(order.payment.paymentIntentId);
+    await createRefund(
+      order.payment.paymentIntentId,
+      `order-refund:${order._id.toString()}`,
+    );
     order.payment.status = PAYMENT_STATUS.REFUNDED;
   }
 

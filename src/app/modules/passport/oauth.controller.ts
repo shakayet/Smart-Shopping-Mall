@@ -1,139 +1,97 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { JwtPayload } from 'jsonwebtoken';
-import config from '../../../config';
-import { jwtHelper } from '../../../helpers/jwtHelper';
-import sendResponse from '../../../shared/sendResponse';
-import catchAsync from '../../../shared/catchAsync';
 import { Secret } from 'jsonwebtoken';
-import process from 'process';
+import config from '../../../config';
+import ApiError from '../../../errors/ApiError';
+import { jwtHelper } from '../../../helpers/jwtHelper';
+import catchAsync from '../../../shared/catchAsync';
+import sendResponse from '../../../shared/sendResponse';
+import { User } from '../user/user.model';
+import { OAuthCode } from './oauthCode.model';
 
-type ProcessEnv = {
-  FRONTEND_OAUTH_CALLBACK_URL?: string;
-  GOOGLE_OAUTH_CLIENT_ID?: string;
-  GOOGLE_OAUTH_CLIENT_SECRET?: string;
-};
+const hashCode = (code: string) =>
+  crypto.createHash('sha256').update(code).digest('hex');
 
-const env = process.env as unknown as ProcessEnv;
-
-/**
- * OAuth Controller
- * Handles OAuth authentication callbacks and token generation
- */
-
-/**
- * Google OAuth Callback Handler
- * Called after Google verifies the user
- * Generates JWT tokens for authenticated user
- */
-type OAuthUser = {
-  _id: { toString(): string };
-  role?: string;
-  email: string;
-};
-
-const googleCallback = catchAsync(async (req: Request, res: Response) => {
-  const user = req.user as OAuthUser | undefined;
-
-  if (!user) {
-    return sendResponse(res, {
-      success: false,
-      statusCode: StatusCodes.UNAUTHORIZED,
-      message: 'Authentication failed',
-    });
-  }
-
-  const userId = user._id.toString();
-  const userRole = user.role || 'USER';
-
-  // Generate JWT tokens
-  const accessToken = jwtHelper.createToken(
-    {
-      id: userId,
-      role: userRole,
-      email: user.email,
-    },
+const buildTokens = (user: { _id: { toString(): string }; role: string; email: string }) => ({
+  accessToken: jwtHelper.createToken(
+    { id: user._id.toString(), role: user.role, email: user.email },
     config.jwt.jwt_secret as Secret,
-    config.jwt.jwt_expire_in as string,
-  );
-
-  const refreshToken = jwtHelper.createToken(
-    {
-      id: userId,
-      role: userRole,
-      email: user.email,
-    },
+    config.jwt.jwt_expire_in,
+  ),
+  refreshToken: jwtHelper.createToken(
+    { id: user._id.toString(), role: user.role, email: user.email },
     config.jwt.jwt_refresh_secret as Secret,
-    config.jwt.jwt_refresh_expire_in as string,
-  );
-
-  // Redirect to frontend with tokens
-  // In production, redirect to your frontend OAuth success page with tokens
-  const frontendCallbackUrl =
-    env.FRONTEND_OAUTH_CALLBACK_URL || 'http://localhost:3000/auth/callback';
-  const redirectUrl = `${frontendCallbackUrl}?accessToken=${accessToken}&refreshToken=${refreshToken}&userId=${userId}`;
-
-  return res.redirect(redirectUrl);
+    config.jwt.jwt_refresh_expire_in,
+  ),
 });
 
-/**
- * Get Current User Profile
- * Returns the currently authenticated user's profile
- */
-const getProfile = catchAsync(async (req: Request, res: Response) => {
-  const user = req.user as JwtPayload & {
-    id: string;
-    email: string;
-    firstName?: string;
-    lastName?: string;
-    avatar?: string;
-  };
-
+const googleCallback = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user as
+    | { _id: { toString(): string }; role: string; email: string }
+    | undefined;
   if (!user) {
-    return sendResponse(res, {
-      success: false,
-      statusCode: StatusCodes.UNAUTHORIZED,
-      message: 'User not authenticated',
-    });
+    throw new ApiError(StatusCodes.UNAUTHORIZED, 'Authentication failed');
   }
 
-  return sendResponse(res, {
+  const code = crypto.randomBytes(32).toString('base64url');
+  await OAuthCode.create({
+    codeHash: hashCode(code),
+    user: user._id,
+    expiresAt: new Date(Date.now() + 60_000),
+  });
+  req.logout(() => undefined);
+  req.session.destroy(() => undefined);
+
+  const callback = new URL(config.oauth.frontendCallbackURL);
+  callback.searchParams.set('code', code);
+  return res.redirect(callback.toString());
+});
+
+const exchangeCode = catchAsync(async (req: Request, res: Response) => {
+  const code = typeof req.body.code === 'string' ? req.body.code : '';
+  const grant = await OAuthCode.findOneAndDelete({
+    codeHash: hashCode(code),
+    expiresAt: { $gt: new Date() },
+  });
+  if (!grant) {
+    throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid or expired OAuth code');
+  }
+
+  const user = await User.findById(grant.user);
+  if (!user || user.status === 'ban' || !user.verified) {
+    throw new ApiError(StatusCodes.UNAUTHORIZED, 'Account is not available');
+  }
+
+  sendResponse(res, {
     success: true,
     statusCode: StatusCodes.OK,
-    message: 'User profile retrieved successfully',
-    data: user,
+    message: 'OAuth sign-in completed',
+    data: buildTokens(user),
   });
 });
 
-/**
- * OAuth Status Check
- * Returns information about configured OAuth providers
- */
-const getOAuthStatus = catchAsync(async (req: Request, res: Response) => {
-  const providers = {
-    google: {
-      configured: !!(
-        env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET
-      ),
-      name: 'Google',
-    },
-    // Future providers can be added here
-    // facebook: {
-    //   configured: !!process.env.FACEBOOK_OAUTH_CLIENT_ID,
-    //   name: 'Facebook',
-    // },
-  };
+const getProfile = catchAsync(async (req: Request, res: Response) => {
+  sendResponse(res, {
+    success: true,
+    statusCode: StatusCodes.OK,
+    message: 'User profile retrieved successfully',
+    data: req.user,
+  });
+});
 
-  return sendResponse(res, {
+const getOAuthStatus = catchAsync(async (_req: Request, res: Response) => {
+  sendResponse(res, {
     success: true,
     statusCode: StatusCodes.OK,
     message: 'OAuth provider status retrieved',
-    data: providers,
+    data: { google: { configured: config.oauth.enabled, name: 'Google' } },
   });
 });
 
 export const OAuthController = {
   googleCallback,
+  exchangeCode,
   getProfile,
   getOAuthStatus,
 };

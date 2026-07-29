@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { StatusCodes } from 'http-status-codes';
 import { JwtPayload, Secret } from 'jsonwebtoken';
 import config from '../../../config';
@@ -334,13 +335,28 @@ const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
   }
 
   // 5) Success — mark OTP consumed immediately
-  await User.findByIdAndUpdate(user._id, {
+  const consumed = await User.findOneAndUpdate(
+    {
+      _id: user._id,
+      'loginOtp.hashedCode': otp.hashedCode,
+      'loginOtp.consumed': false,
+      'loginOtp.expireAt': { $gt: new Date() },
+    },
+    {
     $set: {
       'loginOtp.consumed': true,
       'loginOtp.consumedAt': new Date(),
       'loginOtp.attemptCount': nextAttempts,
     },
-  });
+    },
+    { new: true },
+  );
+  if (!consumed) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'This one-time code has already been used or expired.',
+    );
+  }
 
   logger.info(
     `[AUTH] Passwordless login OTP verified for ${email} (role=${user.role})`,
@@ -420,7 +436,7 @@ const verifyEmailToDB = async (payload: IVerifyEmail) => {
     const createToken = cryptoToken();
     await ResetToken.create({
       user: isExistUser._id,
-      token: createToken,
+      tokenHash: crypto.createHash('sha256').update(createToken).digest('hex'),
       expireAt: new Date(Date.now() + 5 * 60000),
     });
     message =
@@ -435,7 +451,11 @@ const resetPasswordToDB = async (
   payload: IAuthResetPassword,
 ) => {
   const { newPassword, confirmPassword } = payload;
-  const isExistToken = await ResetToken.isExistToken(token);
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const isExistToken = await ResetToken.findOneAndDelete({
+    tokenHash,
+    expireAt: { $gt: new Date() },
+  }).select('+tokenHash');
   if (!isExistToken) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, 'You are not authorized');
   }
@@ -447,14 +467,6 @@ const resetPasswordToDB = async (
     throw new ApiError(
       StatusCodes.UNAUTHORIZED,
       "You don't have permission to change the password. Please click again to 'Forgot Password'",
-    );
-  }
-
-  const isValid = await ResetToken.isExpireToken(token);
-  if (!isValid) {
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      'Token expired, Please click again to the forget password',
     );
   }
 
