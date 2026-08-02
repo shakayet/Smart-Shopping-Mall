@@ -149,22 +149,21 @@ const loginUserFromDB = async (payload: ILoginData) => {
 // ----------------- PASSWORDLESS LOGIN OTP FLOW -----------------
 const requestLoginOtpToDB = async (payload: IRequestLoginOtp) => {
   const email = payload.email.toLowerCase().trim();
-  const user = await User.findOne({ email }).select('+loginOtp');
-  // Security best practice: do NOT reveal whether an account exists.
-  // Use a fake delay so response timing is similar whether exists or not.
+  let user = await User.findOne({ email }).select('+loginOtp');
+  let createdPendingUser = false;
+
   if (!user) {
-    logger.warn(
-      `[AUTH] Passwordless login requested for non-existent email: ${email}`,
-    );
-    // Wait a small amount to avoid email enumeration via timing.
-    await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
-    return {
-      message:
-        'If an account with this email exists, we have sent a one-time sign-in code.',
-    };
+    user = await User.create({
+      email,
+      name: '',
+      role: USER_ROLES.USER,
+      verified: false,
+      status: 'active',
+    });
+    createdPendingUser = true;
   }
 
-  ensureAccountStatus(user, { allowUser: true });
+  ensureAccountStatus(user, { requireVerified: false, allowUser: true });
   ensurePasswordlessUser(user);
 
   enforceResendCooldown(user.loginOtp);
@@ -188,6 +187,9 @@ const requestLoginOtpToDB = async (payload: IRequestLoginOtp) => {
     );
   } catch (err) {
     errorLogger.error(`[AUTH] Failed to send login OTP email to ${email}`, err);
+    if (createdPendingUser) {
+      await User.deleteOne({ _id: user._id, verified: false });
+    }
     throw new ApiError(
       StatusCodes.INTERNAL_SERVER_ERROR,
       'Failed to send sign-in code. Please try again later.',
@@ -195,8 +197,7 @@ const requestLoginOtpToDB = async (payload: IRequestLoginOtp) => {
   }
 
   return {
-    message:
-      'If an account with this email exists, we have sent a one-time sign-in code.',
+    message: 'We have sent a one-time sign-in code to your email.',
   };
 };
 
@@ -213,7 +214,7 @@ const resendLoginOtpToDB = async (payload: IResendLoginOtp) => {
         'If an account with this email exists, we have sent a new one-time sign-in code.',
     };
   }
-  ensureAccountStatus(user, { allowUser: true });
+  ensureAccountStatus(user, { requireVerified: false, allowUser: true });
   ensurePasswordlessUser(user);
   enforceResendCooldown(user.loginOtp);
 
@@ -266,7 +267,7 @@ const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
       'Invalid or expired one-time code. Please request a new code.',
     );
   }
-  ensureAccountStatus(user, { allowUser: true });
+  ensureAccountStatus(user, { requireVerified: false, allowUser: true });
   ensurePasswordlessUser(user);
 
   const otp = user.loginOtp;
@@ -359,6 +360,7 @@ const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
       'loginOtp.consumed': true,
       'loginOtp.consumedAt': new Date(),
       'loginOtp.attemptCount': nextAttempts,
+      verified: true,
     },
     },
     { new: true },
@@ -373,7 +375,7 @@ const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
   logger.info(
     `[AUTH] Passwordless login OTP verified for ${email} (role=${user.role})`,
   );
-  return buildAuthTokens(user);
+  return buildAuthTokens(consumed);
 };
 
 // ----------------- EXISTING FORGET / RESET / VERIFY-EMAIL ETC -----------------

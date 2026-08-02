@@ -223,7 +223,7 @@ const loginOtp = (values: ILoginOtp) => {
 
   const bodyContent = `
     <p style="margin: 0 0 10px; color: #d1d5db;">
-      Hey ${values.name}, use the one-time passcode below to sign in to your ${projectName} account.
+        Hey ${values.name || 'there'}, use the one-time passcode below to sign in to your ${projectName} account.
     </p>
     <div class="otp-box">${values.otp}</div>
     <p style="margin: 8px 0 4px; color: #9ca3af;">
