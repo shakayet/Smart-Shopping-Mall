@@ -15,8 +15,12 @@ const createProductToDB = async (
   payload: Partial<IProduct>,
   files: any
 ) => {
-  if (!files?.image) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Product image is required');
+  const imageFiles = files?.image ?? [];
+  if (imageFiles.length < 1 || imageFiles.length > 4) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'A product requires between 1 and 4 images',
+    );
   }
 
   // Generate unique orderId
@@ -25,14 +29,26 @@ const createProductToDB = async (
   payload.orderId = nextOrderId;
 
   // Upload to S3
-  let imageUrl: string;
+  const imageUrls: string[] = [];
   try {
-    imageUrl = await uploadToS3(files.image[0], 'product-images');
+    for (const imageFile of imageFiles) {
+      imageUrls.push(await uploadToS3(imageFile, 'product-images'));
+    }
+  } catch (error) {
+    await Promise.all(
+      imageUrls.map(url => deleteFromS3(url).catch(() => undefined)),
+    );
+    throw error;
   } finally {
-    await fs.promises.unlink(files.image[0].path).catch(() => undefined);
+    await Promise.all(
+      imageFiles.map((file: any) =>
+        fs.promises.unlink(file.path).catch(() => undefined),
+      ),
+    );
   }
 
-  payload.image = imageUrl;
+  payload.images = imageUrls;
+  delete payload.image;
   payload.status = 'available';
 
   // Handle proof of purchase if provided
@@ -148,7 +164,12 @@ const deleteProductFromDB = async (
 
   // Delete images from S3
   const deletePromises = [];
-  deletePromises.push(deleteFromS3(product.image));
+  const productImages = product.images?.length
+    ? product.images
+    : product.image
+      ? [product.image]
+      : [];
+  deletePromises.push(...productImages.map(image => deleteFromS3(image)));
   if (product.proofOfPurchase) {
     deletePromises.push(deleteFromS3(product.proofOfPurchase));
   }

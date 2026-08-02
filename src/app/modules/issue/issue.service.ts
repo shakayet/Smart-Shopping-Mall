@@ -129,7 +129,12 @@ const resolveIssue = async (
 
   if (action === 'delete') {
     // Delete files from S3
-    await deleteFromS3(product.image);
+    const productImages = product.images?.length
+      ? product.images
+      : product.image
+        ? [product.image]
+        : [];
+    await Promise.all(productImages.map(image => deleteFromS3(image)));
     if (product.proofOfPurchase) {
       await deleteFromS3(product.proofOfPurchase);
     }

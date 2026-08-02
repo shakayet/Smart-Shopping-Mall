@@ -9,7 +9,8 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     DATABASE_URL: z.string().min(1),
-    IP_ADDRESS: z.string().default('0.0.0.0'),
+    DNS_SERVERS: z.string().optional(),
+    IP_ADDRESS: z.string().min(1),
     PORT: z.coerce.number().int().positive().max(65535).default(5000),
     CORS_ORIGIN: z.string().min(1),
     BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
@@ -85,6 +86,10 @@ const corsOrigins = env.CORS_ORIGIN.split(',').map(origin => origin.trim());
 export default {
   ip_address: env.IP_ADDRESS,
   database_url: env.DATABASE_URL,
+  dns_servers: env.DNS_SERVERS
+    ?.split(',')
+    .map(server => server.trim())
+    .filter(Boolean),
   node_env: env.NODE_ENV,
   port: env.PORT,
   bcrypt_salt_rounds: env.BCRYPT_SALT_ROUNDS,

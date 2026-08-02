@@ -1,7 +1,7 @@
 import path from 'path';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import { createLogger, format, transports } from 'winston';
-const { combine, timestamp, label, printf } = format;
+const { colorize, combine, timestamp, label, printf } = format;
 
 const myFormat = printf(info => {
   const { level, message, label, timestamp } = info as unknown as {
@@ -10,25 +10,44 @@ const myFormat = printf(info => {
     label: string;
     timestamp: string;
   };
-    const date = new Date(timestamp);
-    const hour = date.getHours();
-    const minutes = date.getMinutes();
-    const seconds = date.getSeconds();
+  const date = new Date(timestamp);
+  const hour = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
 
-    return `${date.toDateString()} ${hour}:${minutes}:${seconds} [${label}] ${level}: ${message}`;
+  return `${date.toDateString()} ${hour}:${minutes}:${seconds} [${label}] ${level}: ${message}`;
 });
+
+const fileFormat = combine(label({ label: 'SERVER-NAME' }), timestamp(), myFormat);
+const highlightStartup = format(info => {
+  if (
+    typeof info.message === 'string' &&
+    info.message.startsWith('Application listening on port ')
+  ) {
+    // Use Winston's yellow "warn" palette for display without changing severity.
+    (info as unknown as Record<symbol, string>)[Symbol.for('level')] = 'warn';
+  }
+  return info;
+});
+const consoleFormat = combine(
+  highlightStartup(),
+  colorize({ all: true }),
+  label({ label: 'SERVER-NAME' }),
+  timestamp(),
+  myFormat,
+);
 
 const logger = createLogger({
   level: 'info',
-  format: combine(label({ label: 'SERVER-NAME' }), timestamp(), myFormat),
+  format: fileFormat,
   transports: [
-    new transports.Console(),
+    new transports.Console({ format: consoleFormat }),
     new DailyRotateFile({
       filename: path.join(
         process.cwd(),
         'winston',
         'success',
-        '%DATE%-success.log'
+        '%DATE%-success.log',
       ),
       datePattern: 'DD-MM-YYYY-HH',
       maxSize: '20m',
@@ -39,15 +58,15 @@ const logger = createLogger({
 
 const errorLogger = createLogger({
   level: 'error',
-  format: combine(label({ label: 'SERVER-NAME' }), timestamp(), myFormat),
+  format: fileFormat,
   transports: [
-    new transports.Console(),
+    new transports.Console({ format: consoleFormat }),
     new DailyRotateFile({
       filename: path.join(
         process.cwd(),
         'winston',
         'error',
-        '%DATE%-error.log'
+        '%DATE%-error.log',
       ),
       datePattern: 'DD-MM-YYYY-HH',
       maxSize: '20m',

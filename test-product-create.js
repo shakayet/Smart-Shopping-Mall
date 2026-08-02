@@ -9,7 +9,7 @@ const axios = require('axios');
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-const BASE_URL = 'http://10.10.26.189:5000/api/v1';
+const BASE_URL = `http://${process.env.IP_ADDRESS}:${process.env.PORT}/api/v1`;
 
 // Test user data
 const testUser = {

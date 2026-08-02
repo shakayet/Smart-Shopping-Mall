@@ -1,7 +1,7 @@
 import http from 'http';
+import dns from 'node:dns';
 import mongoose from 'mongoose';
 import { Server as SocketServer } from 'socket.io';
-import app from './app';
 import config from './config';
 import { seedSuperAdmin } from './DB/seedAdmin';
 import { socketHelper } from './helpers/socketHelper';
@@ -35,12 +35,20 @@ const shutdown = async (signal: string, exitCode = 0) => {
 };
 
 const main = async () => {
+  if (config.dns_servers?.length) {
+    dns.setServers(config.dns_servers);
+  }
+
   await mongoose.connect(config.database_url, {
     serverSelectionTimeoutMS: 10_000,
   });
   logger.info('Database connected successfully');
 
   await seedSuperAdmin();
+
+  // app.ts creates the Mongo-backed session store as a module side effect.
+  // Load it only after DNS is configured and the primary connection is ready.
+  const { default: app } = await import('./app');
 
   httpServer = app.listen(config.port, config.ip_address, () => {
     logger.info(`Application listening on port ${config.port}`);
@@ -75,5 +83,8 @@ process.on('unhandledRejection', error => {
 
 void main().catch(error => {
   errorLogger.error('Application startup failed', error);
-  void shutdown('startup failure', 1);
+  void shutdown('startup failure', 1).catch(shutdownError => {
+    errorLogger.error('Failed to shut down after startup failure', shutdownError);
+    process.exit(1);
+  });
 });

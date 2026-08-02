@@ -51,6 +51,14 @@ router.post(
   AuthController.verifyLoginOtp,
 );
 
+// Alias preferred by the app. Keep /verify-login-otp for existing clients.
+router.post(
+  '/login-otp',
+  otpVerificationLimiter,
+  validateRequest(AuthValidation.createVerifyLoginOtpZodSchema),
+  AuthController.verifyLoginOtp,
+);
+
 // -------------------- VERIFY-EMAIL / PASSWORD RECOVERY / CHANGE-PASSWORD --------------------
 router.post(
   '/verify-email',
@@ -80,7 +88,12 @@ router.post(
   AuthController.changePassword,
 );
 
-router.post('/resend-otp', authLimiter, auth(USER_ROLES.USER), AuthController.resendOtp);
+router.post(
+  '/resend-otp',
+  otpGenerationLimiter,
+  validateRequest(AuthValidation.createResendOtpZodSchema),
+  AuthController.resendOtp,
+);
 
 router.post(
   '/refresh-token',

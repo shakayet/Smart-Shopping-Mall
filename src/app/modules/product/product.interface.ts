@@ -5,7 +5,9 @@ export type IProductStatus = 'available' | 'secured' | 'sold';
 
 export interface IProduct {
   name: string;
-  image: string;
+  images: string[];
+  /** @deprecated Read-only compatibility for products created before images[]. */
+  image?: string;
   brand: string;
   description: string;
   price: number;

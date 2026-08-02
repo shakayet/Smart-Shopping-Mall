@@ -537,9 +537,20 @@ const changePasswordToDB = async (
 };
 
 const resendOtpToDB = async (email: string) => {
-  const isExistUser = await User.findOne({ email });
+  const normalizedEmail = email.toLowerCase().trim();
+  const isExistUser = await User.findOne({ email: normalizedEmail });
   if (!isExistUser) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
+    // Do not expose whether an email is registered on this public endpoint.
+    await new Promise(resolve => setTimeout(resolve, 600 + Math.random() * 400));
+    return {
+      message: 'If an unverified account with this email exists, we have sent a new OTP.',
+    };
+  }
+
+  if (isExistUser.verified) {
+    return {
+      message: 'If an unverified account with this email exists, we have sent a new OTP.',
+    };
   }
 
   const otp = generateOTP();
@@ -562,7 +573,9 @@ const resendOtpToDB = async (email: string) => {
     { $set: { authentication } },
   );
 
-  return { message: 'OTP resent successfully, please check your email' };
+  return {
+    message: 'If an unverified account with this email exists, we have sent a new OTP.',
+  };
 };
 
 const refreshTokenToDB = async (token: string) => {

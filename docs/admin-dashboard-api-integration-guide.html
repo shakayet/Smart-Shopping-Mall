@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Closeté Admin Dashboard API Integration Guide</title>
+  <style>
+    @page { size: A4; margin: 18mm 17mm 20mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #17201d; font: 11pt/1.55 "Segoe UI", Arial, sans-serif; }
+    h1, h2, h3, h4 { color: #123b2e; page-break-after: avoid; }
+    h1 { font-size: 28pt; line-height: 1.15; margin: 0 0 8mm; }
+    h2 { font-size: 19pt; margin: 10mm 0 4mm; padding-bottom: 2mm; border-bottom: 1px solid #b6c9c2; }
+    h3 { font-size: 14pt; margin: 7mm 0 3mm; }
+    h4 { font-size: 11.5pt; margin: 5mm 0 2mm; }
+    p { margin: 2mm 0 3.5mm; }
+    ul, ol { margin: 1.5mm 0 3mm 5mm; padding-left: 4mm; }
+    li { margin: 0.8mm 0; }
+    table { width: 100%; border-collapse: collapse; margin: 3mm 0 5mm; font-size: 9.5pt; line-height: 1.4; page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    th, td { border: 1px solid #c9d5d1; padding: 2.4mm 2.6mm; text-align: left; vertical-align: top; }
+    th { background: #eaf2ef; color: #123b2e; font-weight: 700; }
+    code { font-family: Consolas, "Courier New", monospace; color: #173f33; }
+    pre { margin: 3mm 0 5mm; padding: 4mm; overflow-wrap: anywhere; white-space: pre-wrap; background: #f4f7f6; color: #10251f; border: 1px solid #c7d7d1; border-left: 4px solid #2d725b; border-radius: 1.5mm; font: 9pt/1.5 Consolas, "Courier New", monospace; page-break-inside: avoid; }
+    .cover { min-height: 220mm; display: flex; flex-direction: column; justify-content: center; page-break-after: always; }
+    .eyebrow { color: #52766a; font-size: 11pt; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .subtitle { max-width: 150mm; font-size: 14pt; line-height: 1.5; color: #446158; }
+    .meta { margin-top: 14mm; padding: 6mm; border-left: 4px solid #1f7a5b; background: #eef6f3; }
+    .page-break { page-break-before: always; }
+    .endpoint { margin: 5mm 0 9mm; padding-top: 1mm; }
+    .method { display: inline-block; min-width: 18mm; padding: 1.4mm 2.4mm; border-radius: 1mm; color: white; font-size: 10pt; font-weight: 800; text-align: center; }
+    .get { background: #1769aa; } .post { background: #1d7a52; } .patch { background: #a76509; } .delete { background: #a12f2f; }
+    .path { font: 700 11.5pt Consolas, monospace; margin-left: 2.5mm; }
+    .note, .warning, .tip { margin: 4mm 0; padding: 4mm 5mm; border-radius: 1.5mm; page-break-inside: avoid; }
+    .note { background: #eef5fb; border-left: 3px solid #2877b5; }
+    .warning { background: #fff5df; border-left: 3px solid #cb7c00; }
+    .tip { background: #eef8f3; border-left: 3px solid #27825d; }
+    .small { color: #51635d; font-size: 9.5pt; }
+    .toc a { color: #173f33; text-decoration: none; }
+    .toc td:first-child { width: 18mm; font-weight: 700; }
+    .status { white-space: nowrap; font-weight: 700; }
+    .schema td:first-child { width: 31mm; font-family: Consolas, monospace; }
+    .schema td:nth-child(2) { width: 22mm; }
+    .schema td:nth-child(3) { width: 20mm; }
+    .no-break { page-break-inside: avoid; }
+    footer { display: none; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div class="eyebrow">Frontend Integration Contract</div>
+    <h1>Closeté Admin Dashboard<br>API Integration Guide</h1>
+    <p class="subtitle">A source-audited, developer-ready reference for authentication, users, products, orders, payouts, and issue operations.</p>
+    <div class="meta">
+      <p><strong>API version:</strong> v1</p>
+      <p><strong>Base path:</strong> <code>{API_ORIGIN}/api/v1</code></p>
+      <p><strong>Document version:</strong> 1.0 &nbsp;·&nbsp; 30 July 2026</p>
+      <p><strong>Source of truth:</strong> current backend routes, validators, controllers, services, models, and middleware</p>
+    </div>
+  </section>
+
+  <h2>Contents</h2>
+  <table class="toc">
+    <tr><td>1</td><td><a href="#quick-start">Quick start and API conventions</a></td></tr>
+    <tr><td>2</td><td><a href="#auth">Authentication and account recovery</a></td></tr>
+    <tr><td>3</td><td><a href="#users">Admin profile and user directory</a></td></tr>
+    <tr><td>4</td><td><a href="#products">Product catalog and moderation</a></td></tr>
+    <tr><td>5</td><td><a href="#orders">Orders, workflow, and payouts</a></td></tr>
+    <tr><td>6</td><td><a href="#issues">Issue management</a></td></tr>
+    <tr><td>7</td><td><a href="#reference">Shared models, errors, and implementation checklist</a></td></tr>
+  </table>
+
+  <div class="note"><strong>Scope.</strong> This guide documents every endpoint needed by the current admin dashboard. Buyer checkout, wishlists, AI analysis, OAuth, Stripe Connect onboarding, and Stripe webhooks are outside the admin UI contract. No aggregate dashboard/stats endpoint exists in the backend.</div>
+
+  <h2 id="quick-start">1. Quick start and API conventions</h2>
+
+  <h3>1.1 Base URL and headers</h3>
+  <pre>Base URL: https://your-api-host.example/api/v1
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer &lt;accessToken&gt;</pre>
+  <p>All protected admin routes accept a JWT access token in the HTTP <code>Authorization</code> header. Role claims must be exactly <code>ADMIN</code> or <code>SUPER_ADMIN</code>. These two roles currently have identical route permissions.</p>
+  <div class="warning"><strong>Token storage.</strong> The API returns tokens in JSON and does not set an HttpOnly authentication cookie. If a same-origin backend-for-frontend is available, keep tokens in secure HttpOnly cookies there. Otherwise keep the access token in memory and protect refresh-token storage carefully.</div>
+
+  <h3>1.2 Success envelope</h3>
+  <pre>{
+  "success": true,
+  "message": "Human-readable message",
+  "pagination": { "total": 42, "limit": 10, "page": 1, "totalPage": 5 },
+  "data": {}
+}</pre>
+  <p><code>message</code>, <code>pagination</code>, and <code>data</code> may be omitted by JSON serialization when undefined. List endpoints in this guide return the row array directly in <code>data</code>; they do <strong>not</strong> wrap it in <code>{ result, meta }</code>.</p>
+
+  <h3>1.3 Error envelope</h3>
+  <pre>{
+  "success": false,
+  "message": "Validation Error",
+  "errorMessages": [
+    { "path": "email", "message": "Invalid email" }
+  ]
+}</pre>
+  <p>In non-production environments, an additional <code>stack</code> property may appear. A route miss returns <code>404</code> with the same general shape and an <code>errorMessages[0].path</code> equal to the requested URL.</p>
+
+  <h3>1.4 Common status codes</h3>
+  <table>
+    <tr><th>Code</th><th>Meaning and frontend action</th></tr>
+    <tr><td class="status">200 OK</td><td>Successful read, update, login, or delete.</td></tr>
+    <tr><td class="status">201 Created</td><td>Product or issue created.</td></tr>
+    <tr><td class="status">400 Bad Request</td><td>Schema validation or business-rule failure. Render <code>errorMessages</code> and refresh stale workflow data when relevant.</td></tr>
+    <tr><td class="status">401 Unauthorized</td><td>Missing, invalid, or expired token. Try one refresh; then return to sign-in.</td></tr>
+    <tr><td class="status">403 Forbidden</td><td>Authenticated role lacks permission.</td></tr>
+    <tr><td class="status">404 Not Found</td><td>Requested product, order, issue, or route does not exist.</td></tr>
+    <tr><td class="status">409 Conflict</td><td>External/state conflict, notably unavailable Stripe payout onboarding.</td></tr>
+    <tr><td class="status">413 Payload Too Large</td><td>Upload exceeds configured maximum.</td></tr>
+    <tr><td class="status">429 Too Many Requests</td><td>Rate limit reached. Respect <code>RateLimit</code>/<code>Retry-After</code> response headers.</td></tr>
+    <tr><td class="status">500 Internal Server Error</td><td>Unexpected failure or failed third-party operation. Do not assume a mutation was rolled back; refetch the resource.</td></tr>
+  </table>
+
+  <h3>1.5 Pagination, filtering, sorting, and projection</h3>
+  <table>
+    <tr><th>Query</th><th>Behavior</th><th>Supported by</th></tr>
+    <tr><td><code>page</code></td><td>Positive numeric page; backend default <code>1</code>. Invalid/zero values fall back to 1.</td><td>Users, products, admin orders</td></tr>
+    <tr><td><code>limit</code></td><td>Numeric page size; backend default <code>10</code>. No explicit maximum is enforced.</td><td>Users, products, admin orders</td></tr>
+    <tr><td><code>sort</code></td><td>Mongoose sort expression. Default <code>-createdAt</code>; examples: <code>price</code>, <code>-price</code>, <code>name</code>.</td><td>Users, products, admin orders</td></tr>
+    <tr><td><code>searchTerm</code></td><td>Case-insensitive regex search. Users: name/email/contact. Products: name/brand/description.</td><td>Users, products only</td></tr>
+    <tr><td><code>fields</code></td><td>Comma-separated projection such as <code>name,email,status</code>. Default excludes <code>__v</code>.</td><td>Users, products only</td></tr>
+    <tr><td>Other keys</td><td>Exact Mongo field filters. Useful examples: <code>role=USER</code>, <code>status=active</code>, <code>status=verification</code>, <code>payoutStatus=failed</code>.</td><td>Users, products, admin orders</td></tr>
+  </table>
+  <div class="warning"><strong>Do not pass UI-only query keys.</strong> Unknown keys on filter-enabled endpoints become database equality filters and may produce an empty list. Remove values such as <code>tab</code>, <code>view</code>, or <code>search</code>; the search key is specifically <code>searchTerm</code>.</div>
+  <p>Issues are currently returned as one unpaginated, newest-first array; query parameters are ignored.</p>
+
+  <h3>1.6 Global rate limits</h3>
+  <table>
+    <tr><th>Scope</th><th>Limit</th><th>Window</th></tr>
+    <tr><td>All <code>/api/*</code> routes</td><td>300 requests per IP</td><td>15 minutes</td></tr>
+    <tr><td>Password login, recovery, email verification</td><td>10 requests per IP</td><td>15 minutes</td></tr>
+  </table>
+
+  <h2 id="auth" class="page-break">2. Authentication and account recovery</h2>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/auth/admin/login</span></h3>
+    <p><strong>Purpose:</strong> Password sign-in for <code>ADMIN</code> and <code>SUPER_ADMIN</code> accounts.</p>
+    <p><strong>Authentication:</strong> Public. Rate limited to 10 attempts/IP/15 minutes.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Description / validation</th></tr>
+      <tr><td>email</td><td>string</td><td>Yes</td><td>Valid email syntax. The lookup uses the submitted value; normalize to lowercase in the client.</td></tr>
+      <tr><td>password</td><td>string</td><td>Yes</td><td>No route-level minimum; stored passwords use a six-character model minimum.</td></tr>
+    </table>
+    <h4>Sample request</h4>
+    <pre>POST /api/v1/auth/admin/login
+Content-Type: application/json
+
+{ "email": "admin@example.com", "password": "correct-horse-battery-staple" }</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Admin logged in successfully.",
+  "data": {
+    "accessToken": "&lt;jwt&gt;",
+    "refreshToken": "&lt;jwt&gt;"
+  }
+}</pre>
+    <table>
+      <tr><th>Error</th><th>When</th></tr>
+      <tr><td>400</td><td>Account absent, unverified, banned, or password incorrect.</td></tr>
+      <tr><td>403</td><td>The credentials belong to a <code>USER</code>; password login is admin-only.</td></tr>
+      <tr><td>429</td><td>Login rate limit exceeded.</td></tr>
+    </table>
+    <div class="tip">After login, call <code>GET /user/profile</code>. The token response does not include name, image, or account details.</div>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/auth/refresh-token</span></h3>
+    <p><strong>Purpose:</strong> Exchange a valid refresh token for a new access token.</p>
+    <p><strong>Authentication:</strong> Public endpoint; refresh token is in the JSON body, not the Authorization header.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      <tr><td>refreshToken</td><td>string</td><td>Yes</td><td>JWT returned by login.</td></tr>
+    </table>
+    <pre>POST /api/v1/auth/refresh-token
+Content-Type: application/json
+
+{ "refreshToken": "&lt;refresh-jwt&gt;" }</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Access token generated successfully",
+  "data": { "accessToken": "&lt;new-access-jwt&gt;" }
+}</pre>
+    <p><strong>Errors:</strong> <code>400</code> missing body field; <code>401</code> invalid/expired token, deleted user, banned account, or unverified account. The refresh token is not rotated.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/auth/change-password</span></h3>
+    <p><strong>Purpose:</strong> Change the signed-in admin’s password.</p>
+    <p><strong>Authentication:</strong> Bearer access token. Route permits <code>ADMIN</code> and <code>USER</code>, but currently omits <code>SUPER_ADMIN</code>.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Rules</th></tr>
+      <tr><td>currentPassword</td><td>string</td><td>Yes</td><td>Must match stored password.</td></tr>
+      <tr><td>newPassword</td><td>string</td><td>Yes</td><td>Must differ from current password.</td></tr>
+      <tr><td>confirmPassword</td><td>string</td><td>Yes</td><td>Must equal <code>newPassword</code>.</td></tr>
+    </table>
+    <pre>POST /api/v1/auth/change-password
+Authorization: Bearer &lt;accessToken&gt;
+Content-Type: application/json
+
+{
+  "currentPassword": "old-password",
+  "newPassword": "new-long-password",
+  "confirmPassword": "new-long-password"
+}</pre>
+    <h4>200 response</h4>
+    <pre>{ "success": true, "message": "Your password has been successfully changed" }</pre>
+    <p><strong>Errors:</strong> <code>400</code> validation, user absent, incorrect current password, password reused, or confirmation mismatch; <code>401</code> invalid token; <code>403</code> role denied.</p>
+    <div class="warning"><strong>Backend caveat:</strong> A <code>SUPER_ADMIN</code> token receives 403 on this route even though it can use other admin routes.</div>
+  </section>
+
+  <h3>2.1 Password-recovery sequence</h3>
+  <p>The recovery flow is a three-request sequence. The six-digit OTP expires after 3 minutes; the reset token returned after OTP verification expires after 5 minutes and is single-use.</p>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/auth/forget-password</span></h3>
+    <p><strong>Purpose:</strong> Email a password-reset OTP. Public; 10 requests/IP/15 minutes.</p>
+    <p><strong>Body:</strong> <code>{ "email": "admin@example.com" }</code> where <code>email</code> is required and must be valid.</p>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Please check your email. We have sent you a one-time passcode (OTP)."
+}</pre>
+    <p><strong>Errors:</strong> <code>400</code> invalid email or user absent; <code>429</code> rate limit.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/auth/verify-email</span></h3>
+    <p><strong>Purpose:</strong> Verify the reset OTP and obtain a one-time reset token. This endpoint also serves account email verification.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      <tr><td>email</td><td>string</td><td>Yes</td><td>Valid email.</td></tr>
+      <tr><td>oneTimeCode</td><td>number</td><td>Yes</td><td>Numeric OTP; send as a JSON number, not a string.</td></tr>
+    </table>
+    <pre>POST /api/v1/auth/verify-email
+Content-Type: application/json
+
+{ "email": "admin@example.com", "oneTimeCode": 123456 }</pre>
+    <h4>200 reset-flow response</h4>
+    <pre>{
+  "success": true,
+  "message": "Verification Successful: Please securely store and utilize this code for reset password",
+  "data": "&lt;one-time-reset-token&gt;"
+}</pre>
+    <p>If the account was not yet verified, the same request verifies it and returns no reset token. Errors are <code>400</code> for missing/incorrect/expired OTP or absent user, and <code>429</code> for the auth rate limit.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/auth/reset-password</span></h3>
+    <p><strong>Purpose:</strong> Set a new password using the reset token.</p>
+    <p><strong>Authentication:</strong> <code>Authorization: Bearer &lt;one-time-reset-token&gt;</code>. This is not an access JWT.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Rules</th></tr>
+      <tr><td>newPassword</td><td>string</td><td>Yes</td><td>Confirmation must match.</td></tr>
+      <tr><td>confirmPassword</td><td>string</td><td>Yes</td><td>Must equal new password.</td></tr>
+    </table>
+    <pre>POST /api/v1/auth/reset-password
+Authorization: Bearer &lt;one-time-reset-token&gt;
+Content-Type: application/json
+
+{ "newPassword": "new-long-password", "confirmPassword": "new-long-password" }</pre>
+    <h4>200 response</h4>
+    <pre>{ "success": true, "message": "Your password has been successfully reset." }</pre>
+    <p><strong>Errors:</strong> <code>400</code> missing fields or mismatch; <code>401</code> missing, invalid, expired, already-consumed, or unauthorized reset token.</p>
+  </section>
+
+  <h2 id="users" class="page-break">3. Admin profile and user directory</h2>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/user/profile</span></h3>
+    <p><strong>Purpose:</strong> Load the signed-in admin identity after authentication.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code>, <code>SUPER_ADMIN</code>, or <code>USER</code>.</p>
+    <pre>GET /api/v1/user/profile
+Authorization: Bearer &lt;accessToken&gt;</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Profile data retrieved successfully",
+  "data": {
+    "_id": "66a0...001",
+    "name": "Operations Admin",
+    "role": "ADMIN",
+    "email": "admin@example.com",
+    "contact": "+971500000000",
+    "location": "Dubai",
+    "image": "https://cdn.example.com/profile.png",
+    "provider": "local",
+    "status": "active",
+    "verified": true,
+    "createdAt": "2026-07-01T10:00:00.000Z",
+    "updatedAt": "2026-07-20T12:00:00.000Z"
+  }
+}</pre>
+    <p><strong>Errors:</strong> <code>400</code> user record no longer exists; <code>401</code> invalid token; <code>403</code> unsupported role.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method patch">PATCH</span><span class="path">/user/profile</span></h3>
+    <p><strong>Purpose:</strong> Update the signed-in admin’s basic profile and optional image.</p>
+    <p><strong>Authentication:</strong> Bearer token; all known roles.</p>
+    <p><strong>Content type:</strong> <code>multipart/form-data</code>. Send a JSON string in field <code>data</code> and optionally one file in field <code>image</code>.</p>
+    <table class="schema">
+      <tr><th>data JSON field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      <tr><td>name</td><td>string</td><td>No</td><td>Updated display name.</td></tr>
+      <tr><td>email</td><td>string</td><td>No</td><td>No email-format validation on this update route.</td></tr>
+      <tr><td>password</td><td>string</td><td>No</td><td>Avoid this field; use change-password so hashing and current-password checks apply.</td></tr>
+      <tr><td>image</td><td>string</td><td>No</td><td>Normally supplied as the file part instead.</td></tr>
+    </table>
+    <pre>const form = new FormData();
+form.append("data", JSON.stringify({ name: "Ops Lead" }));
+form.append("image", file);
+
+await fetch(`${baseUrl}/user/profile`, {
+  method: "PATCH",
+  headers: { Authorization: `Bearer ${accessToken}` },
+  body: form
+}); // Do not manually set Content-Type; the browser adds the boundary.</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Profile updated successfully",
+  "data": { "_id": "66a0...001", "name": "Ops Lead", "role": "ADMIN", "...": "..." }
+}</pre>
+    <p><strong>File rules:</strong> JPEG/JPG/PNG only; MIME type and magic bytes are checked. Maximum size is deployment-configured (<code>MAX_UPLOAD_BYTES</code>, default 10 MiB). Up to 3 image parts are technically accepted, but only the first is used.</p>
+    <p><strong>Errors:</strong> <code>400</code> malformed <code>data</code>, unsupported/invalid file, or absent user; <code>401/403</code> auth; <code>413</code> upload too large.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/user</span></h3>
+    <p><strong>Purpose:</strong> Paginated user directory for operations and customer support.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>.</p>
+    <p><strong>Query:</strong> <code>page</code>, <code>limit</code>, <code>sort</code>, <code>searchTerm</code>, <code>fields</code>, plus exact filters such as <code>role=USER</code>, <code>status=active|ban</code>, <code>verified=true|false</code>, or <code>provider=local|google</code>.</p>
+    <pre>GET /api/v1/user?page=1&amp;limit=20&amp;role=USER&amp;status=active&amp;searchTerm=sara&amp;sort=-createdAt
+Authorization: Bearer &lt;accessToken&gt;</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Users retrieved successfully",
+  "pagination": { "total": 1, "limit": 20, "page": 1, "totalPage": 1 },
+  "data": [{
+    "_id": "66b0...009",
+    "name": "Sara Ali",
+    "role": "USER",
+    "email": "sara@example.com",
+    "contact": "+971501234567",
+    "location": "Dubai",
+    "image": "https://cdn.example.com/profile.png",
+    "provider": "local",
+    "status": "active",
+    "verified": true,
+    "createdAt": "2026-07-25T09:00:00.000Z",
+    "updatedAt": "2026-07-25T09:05:00.000Z"
+  }]
+}</pre>
+    <p><strong>Errors:</strong> <code>401/403</code> auth; <code>500</code> malformed Mongo query/sort/projection. Sensitive password, OTP, authentication, login-OTP, and Stripe account fields are excluded by model selection.</p>
+    <div class="warning"><strong>Capability gap:</strong> There is no admin endpoint to view an arbitrary user by ID, ban/unban users, change roles, create admin accounts, or delete another user. The public <code>POST /user</code> creates only a <code>USER</code>, so it is not an admin-management API.</div>
+  </section>
+
+  <h2 id="products" class="page-break">4. Product catalog and moderation</h2>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/products</span></h3>
+    <p><strong>Purpose:</strong> Browse the catalog for moderation. Public endpoint; no token required.</p>
+    <p><strong>Query:</strong> Standard pagination/sort/search/projection plus exact filters. If <code>status</code> is omitted, the backend forces <code>status=available</code>. Admin views must explicitly send <code>status=secured</code> or <code>status=sold</code> to see those states.</p>
+    <pre>GET /api/v1/products?page=1&amp;limit=20&amp;status=secured&amp;searchTerm=chanel&amp;sort=-createdAt</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Products retrieved successfully",
+  "pagination": { "total": 1, "limit": 20, "page": 1, "totalPage": 1 },
+  "data": [{
+    "_id": "66c0...110",
+    "name": "Classic Flap Bag",
+    "image": "https://cdn.example.com/product-images/bag.jpg",
+    "brand": "Chanel",
+    "description": "Black lambskin, gold hardware",
+    "price": 12500,
+    "condition": "Excellent",
+    "proofOfPurchase": "https://cdn.example.com/product-proofs/receipt.pdf",
+    "status": "secured",
+    "seller": {
+      "_id": "66b0...009", "name": "Sara Ali",
+      "location": "Dubai", "contact": "+971501234567"
+    },
+    "buyer": "66b0...010",
+    "orderId": 1042,
+    "createdAt": "2026-07-25T09:00:00.000Z",
+    "updatedAt": "2026-07-26T09:00:00.000Z"
+  }]
+}</pre>
+    <p><strong>Errors:</strong> Usually <code>500</code> for invalid query syntax. Product-list results are cached for 60 seconds by the full query and invalidated on product create/update/delete and issue resolution.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/products/:id</span></h3>
+    <p><strong>Purpose:</strong> Fetch one complete product. Public endpoint.</p>
+    <table class="schema"><tr><th>Path field</th><th>Type</th><th>Required</th><th>Description</th></tr><tr><td>id</td><td>Mongo ObjectId</td><td>Yes</td><td>Product <code>_id</code>, not numeric <code>orderId</code>.</td></tr></table>
+    <pre>GET /api/v1/products/66c0f1234567890123456110</pre>
+    <p><strong>200:</strong> Same product object shape as above in <code>data</code>, with seller populated as name/location/contact. <strong>Errors:</strong> <code>404</code> product absent; malformed ObjectId may surface as <code>500</code> in production.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/products</span></h3>
+    <p><strong>Purpose:</strong> Create a product listing. Admins may use this route, and become the product’s seller.</p>
+    <p><strong>Authentication:</strong> Bearer token; all roles.</p>
+    <p><strong>Content type:</strong> <code>multipart/form-data</code>. Prefer a JSON string in <code>data</code>, one required <code>image</code> file, and an optional <code>doc</code> PDF.</p>
+    <table class="schema">
+      <tr><th>data JSON field</th><th>Type</th><th>Required</th><th>Description / validation</th></tr>
+      <tr><td>name</td><td>string</td><td>Yes</td><td>Product display name.</td></tr>
+      <tr><td>brand</td><td>string</td><td>Yes</td><td>Brand label.</td></tr>
+      <tr><td>description</td><td>string</td><td>Yes</td><td>Product description.</td></tr>
+      <tr><td>price</td><td>number</td><td>Yes</td><td>JSON number. No explicit positive/minimum validation.</td></tr>
+      <tr><td>condition</td><td>string</td><td>Yes</td><td>Free-form; no enum is enforced.</td></tr>
+    </table>
+    <pre>const form = new FormData();
+form.append("data", JSON.stringify({
+  name: "Classic Flap Bag",
+  brand: "Chanel",
+  description: "Black lambskin, gold hardware",
+  price: 12500,
+  condition: "Excellent"
+}));
+form.append("image", imageFile); // JPEG or PNG, required
+form.append("doc", proofPdf);    // PDF, optional</pre>
+    <h4>201 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Product created successfully",
+  "data": {
+    "_id": "66c0...110",
+    "name": "Classic Flap Bag",
+    "image": "https://cdn.example.com/product-images/bag.jpg",
+    "brand": "Chanel",
+    "description": "Black lambskin, gold hardware",
+    "price": 12500,
+    "condition": "Excellent",
+    "proofOfPurchase": "https://cdn.example.com/product-proofs/receipt.pdf",
+    "status": "available",
+    "seller": "66a0...001",
+    "orderId": 1042,
+    "createdAt": "2026-07-30T10:00:00.000Z",
+    "updatedAt": "2026-07-30T10:00:00.000Z"
+  }
+}</pre>
+    <p><strong>File rules:</strong> <code>image</code> accepts JPEG/JPG/PNG; <code>doc</code> accepts PDF. MIME type and file signature are checked. Deployment maximum defaults to 10 MiB per file; middleware allows at most 6 total files and 3 per field, although this service uses only the first image and first document.</p>
+    <p><strong>Business logic:</strong> Seller comes from the token, status is forced to <code>available</code>, and a sequential numeric <code>orderId</code> is assigned starting at 1000. Files are uploaded to object storage.</p>
+    <p><strong>Errors:</strong> <code>400</code> missing required fields/image, malformed <code>data</code>, unsupported or spoofed file; <code>401/403</code> auth; <code>413</code> size; <code>500</code> storage/database failure.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method patch">PATCH</span><span class="path">/products/:id</span></h3>
+    <p><strong>Purpose:</strong> Edit product metadata or moderation status.</p>
+    <p><strong>Authentication:</strong> Bearer token; all roles. Service authorizes the seller or either admin role.</p>
+    <table class="schema">
+      <tr><th>JSON body field</th><th>Type</th><th>Required</th><th>Validation</th></tr>
+      <tr><td>name</td><td>string</td><td>No</td><td>Free-form.</td></tr>
+      <tr><td>brand</td><td>string</td><td>No</td><td>Free-form.</td></tr>
+      <tr><td>description</td><td>string</td><td>No</td><td>Free-form.</td></tr>
+      <tr><td>price</td><td>number</td><td>No</td><td>Must be JSON number.</td></tr>
+      <tr><td>condition</td><td>string</td><td>No</td><td>Free-form.</td></tr>
+      <tr><td>status</td><td>enum</td><td>No</td><td><code>available</code>, <code>secured</code>, or <code>sold</code>.</td></tr>
+    </table>
+    <pre>PATCH /api/v1/products/66c0f1234567890123456110
+Authorization: Bearer &lt;accessToken&gt;
+Content-Type: application/json
+
+{ "condition": "Very good", "status": "available" }</pre>
+    <p><strong>200:</strong> Updated product in <code>data</code>. <strong>Errors:</strong> <code>400</code> validation; <code>401/403</code> auth/ownership; <code>404</code> absent product.</p>
+    <div class="warning">This endpoint does not accept replacement files and does not enforce order workflow. Changing <code>status</code> manually can desynchronize the product from its order; prefer order/issue operations for secured products.</div>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method delete">DELETE</span><span class="path">/products/:id</span></h3>
+    <p><strong>Purpose:</strong> Permanently remove a product and its object-storage image/proof.</p>
+    <p><strong>Authentication:</strong> Bearer token; seller or either admin role.</p>
+    <pre>DELETE /api/v1/products/66c0f1234567890123456110
+Authorization: Bearer &lt;accessToken&gt;</pre>
+    <h4>200 response</h4>
+    <pre>{ "success": true, "message": "Product deleted successfully", "data": null }</pre>
+    <p><strong>Errors:</strong> <code>401/403</code> auth/ownership; <code>404</code> absent product; <code>500</code> object-storage/database failure.</p>
+    <div class="warning">Deletion is hard and does not check for an associated order. For verification failures, use the issue-resolution flow so refunds/reversals and seller notification happen first.</div>
+  </section>
+
+  <h2 id="orders" class="page-break">5. Orders, workflow, and payouts</h2>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/orders/admin/all</span></h3>
+    <p><strong>Purpose:</strong> Paginated operational order queue.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>.</p>
+    <p><strong>Query:</strong> <code>page</code>, <code>limit</code>, <code>sort</code>, plus exact equality filters. There is no search or projection on this endpoint. Useful filters: <code>status</code>, <code>payoutStatus</code>, <code>payment.status</code>, <code>buyer</code>, <code>seller</code>, or <code>product</code>.</p>
+    <pre>GET /api/v1/orders/admin/all?page=1&amp;limit=20&amp;status=verification&amp;sort=-createdAt
+Authorization: Bearer &lt;accessToken&gt;</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Orders retrieved successfully",
+  "pagination": { "total": 1, "limit": 20, "page": 1, "totalPage": 1 },
+  "data": [{
+    "_id": "66d0...220",
+    "orderNumber": "CLT-12345678901",
+    "product": { "_id": "66c0...110", "name": "Classic Flap Bag", "...": "..." },
+    "buyer": {
+      "_id": "66b0...010", "name": "Buyer Name", "email": "buyer@example.com",
+      "contact": "+971500000001", "location": "Dubai"
+    },
+    "seller": {
+      "_id": "66b0...009", "name": "Sara Ali", "email": "sara@example.com",
+      "contact": "+971501234567", "location": "Dubai"
+    },
+    "price": 12500,
+    "platformFee": 1500,
+    "sellerPayout": 11000,
+    "deliveryDetails": {
+      "address": "Apartment 5", "location": "Dubai Marina", "phone": "+971500000001"
+    },
+    "payment": { "provider": "stripe", "paymentIntentId": "pi_...", "status": "paid" },
+    "payoutStatus": "pending",
+    "status": "verification",
+    "statusHistory": [{
+      "status": "verification",
+      "note": "Received at authentication center",
+      "changedAt": "2026-07-29T08:00:00.000Z",
+      "changedBy": "66a0...001"
+    }],
+    "createdAt": "2026-07-26T08:00:00.000Z",
+    "updatedAt": "2026-07-29T08:00:00.000Z"
+  }]
+}</pre>
+    <p><strong>Errors:</strong> <code>401/403</code> auth; malformed query expressions may become <code>500</code>.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/orders/:id</span></h3>
+    <p><strong>Purpose:</strong> Fetch a full order and populated participants for a detail drawer/page.</p>
+    <p><strong>Authentication:</strong> Bearer token; admins or an order participant.</p>
+    <table class="schema"><tr><th>Path field</th><th>Type</th><th>Required</th><th>Description</th></tr><tr><td>id</td><td>Mongo ObjectId</td><td>Yes</td><td>Order document <code>_id</code>, not <code>orderNumber</code>.</td></tr></table>
+    <p><strong>200:</strong> One order object in <code>data</code>, shaped like the list sample. <strong>Errors:</strong> <code>401/403</code> auth; <code>404</code> absent order; malformed ID may surface as <code>500</code>.</p>
+  </section>
+
+  <h3>5.1 Order status state machine</h3>
+  <table>
+    <tr><th>Current status</th><th>Permitted next status(es)</th><th>Side effects</th></tr>
+    <tr><td><code>pending_payment</code></td><td><code>secured</code></td><td>Normally entered automatically by Stripe webhook, not by admin.</td></tr>
+    <tr><td><code>secured</code></td><td><code>collection_pending</code>, <code>cancelled</code></td><td>Cancel refunds paid payment and relists product.</td></tr>
+    <tr><td><code>collection_pending</code></td><td><code>collected</code>, <code>cancelled</code></td><td>Cancel refunds and relists.</td></tr>
+    <tr><td><code>collected</code></td><td><code>verification</code></td><td>No external side effect.</td></tr>
+    <tr><td><code>verification</code></td><td><code>payout_processing</code>, <code>refunded</code></td><td>Payout transition sends Stripe transfer; refund relists product.</td></tr>
+    <tr><td><code>payout_processing</code></td><td><code>ready_for_delivery</code></td><td>No new transfer; payout should already be paid.</td></tr>
+    <tr><td><code>ready_for_delivery</code></td><td><code>delivered</code></td><td>Product becomes <code>sold</code>.</td></tr>
+    <tr><td><code>delivered</code></td><td><code>completed</code></td><td>Product remains <code>sold</code>.</td></tr>
+    <tr><td><code>completed</code>, <code>refunded</code>, <code>cancelled</code></td><td>None</td><td>Terminal states.</td></tr>
+  </table>
+
+  <section class="endpoint">
+    <h3><span class="method patch">PATCH</span><span class="path">/orders/:id/status</span></h3>
+    <p><strong>Purpose:</strong> Advance an order through the controlled operations workflow.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      <tr><td>status</td><td>enum</td><td>Yes</td><td>One of the 11 lowercase order statuses shown in the state machine.</td></tr>
+      <tr><td>note</td><td>string</td><td>No</td><td>Operations note appended to status history.</td></tr>
+    </table>
+    <pre>PATCH /api/v1/orders/66d0f1234567890123456220/status
+Authorization: Bearer &lt;accessToken&gt;
+Content-Type: application/json
+
+{ "status": "payout_processing", "note": "Authentication passed" }</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Order status updated successfully",
+  "data": {
+    "_id": "66d0...220",
+    "status": "payout_processing",
+    "payoutStatus": "paid",
+    "payoutTransferId": "tr_...",
+    "statusHistory": [{
+      "status": "payout_processing",
+      "note": "Authentication passed",
+      "changedAt": "2026-07-30T11:00:00.000Z",
+      "changedBy": "66a0...001"
+    }],
+    "...": "..."
+  }
+}</pre>
+    <p><strong>Errors:</strong> <code>400</code> invalid enum/transition, unsettled buyer payment, or payout attempted outside verification; <code>401/403</code> auth; <code>404</code> order absent; <code>409</code> seller has no connected Stripe account or onboarding/payout capability is incomplete; <code>500</code> Stripe refund/transfer failure.</p>
+    <div class="warning"><strong>Payout behavior:</strong> Moving <code>verification → payout_processing</code> immediately calls Stripe. On transfer success, <code>payoutStatus</code> becomes <code>paid</code>; on failure it becomes <code>failed</code>, the order status remains <code>verification</code>, and the request errors. Refetch after every failure.</div>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method patch">PATCH</span><span class="path">/orders/:id/payout</span></h3>
+    <p><strong>Purpose:</strong> Retry or explicitly initiate the seller Stripe transfer for an order in <code>verification</code> or <code>payout_processing</code>.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>. No request body.</p>
+    <pre>PATCH /api/v1/orders/66d0f1234567890123456220/payout
+Authorization: Bearer &lt;accessToken&gt;</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Seller payout marked as paid",
+  "data": {
+    "_id": "66d0...220",
+    "status": "verification",
+    "payoutStatus": "paid",
+    "payoutTransferId": "tr_...",
+    "...": "..."
+  }
+}</pre>
+    <p><strong>Validation/business logic:</strong> Buyer payment must be <code>paid</code>; order status must be <code>verification</code> or <code>payout_processing</code>; seller’s connected account must have submitted details and enabled payouts. If already paid, the call is idempotent and returns the order without another transfer.</p>
+    <p><strong>Errors:</strong> <code>400</code> state/payment ineligible; <code>401/403</code> auth; <code>404</code> order absent; <code>409</code> Stripe account unavailable/incomplete; <code>500</code> transfer failure.</p>
+    <div class="note">Despite the response wording, this endpoint does not merely mark a manual payment. It creates a real Stripe transfer.</div>
+  </section>
+
+  <h2 id="issues" class="page-break">6. Issue management</h2>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/issues</span></h3>
+    <p><strong>Purpose:</strong> Return the complete issue queue, newest first.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>.</p>
+    <p><strong>Pagination/filtering:</strong> None. Query parameters are ignored.</p>
+    <pre>GET /api/v1/issues
+Authorization: Bearer &lt;accessToken&gt;</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Issues retrieved successfully",
+  "data": [{
+    "_id": "66e0...330",
+    "product": { "_id": "66c0...110", "name": "Classic Flap Bag", "...": "..." },
+    "buyer": { "_id": "66b0...010", "name": "Buyer Name", "...": "..." },
+    "seller": { "_id": "66b0...009", "name": "Sara Ali", "...": "..." },
+    "issueType": "verification_failed",
+    "reason": "Serial number could not be authenticated",
+    "admin": { "_id": "66a0...001", "name": "Operations Admin", "...": "..." },
+    "resolved": false,
+    "createdAt": "2026-07-30T12:00:00.000Z",
+    "updatedAt": "2026-07-30T12:00:00.000Z"
+  }]
+}</pre>
+    <p><strong>Errors:</strong> <code>401/403</code> auth; <code>500</code> database/population failure. Populated user objects use default model selection and may contain normal profile/contact fields.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method get">GET</span><span class="path">/issues/:id</span></h3>
+    <p><strong>Purpose:</strong> Fetch one fully populated issue.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>.</p>
+    <p><strong>200:</strong> Same object shape as the list sample in <code>data</code>. <strong>Errors:</strong> <code>401/403</code> auth; <code>404</code> issue absent; malformed ObjectId may surface as <code>500</code>.</p>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/issues</span></h3>
+    <p><strong>Purpose:</strong> Record a buyer refusal or failed product verification and apply financial safeguards.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Description / validation</th></tr>
+      <tr><td>productId</td><td>string</td><td>Yes</td><td>Product Mongo <code>_id</code>.</td></tr>
+      <tr><td>issueType</td><td>enum</td><td>Yes</td><td><code>buyer_refused</code> or <code>verification_failed</code>.</td></tr>
+      <tr><td>reason</td><td>string</td><td>Yes</td><td>Human-readable evidence/reason.</td></tr>
+    </table>
+    <pre>POST /api/v1/issues
+Authorization: Bearer &lt;accessToken&gt;
+Content-Type: application/json
+
+{
+  "productId": "66c0f1234567890123456110",
+  "issueType": "verification_failed",
+  "reason": "Serial number could not be authenticated"
+}</pre>
+    <h4>201 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Issue created successfully",
+  "data": {
+    "_id": "66e0...330",
+    "product": "66c0...110",
+    "buyer": "66b0...010",
+    "seller": "66b0...009",
+    "issueType": "verification_failed",
+    "reason": "Serial number could not be authenticated",
+    "admin": "66a0...001",
+    "resolved": false,
+    "createdAt": "2026-07-30T12:00:00.000Z",
+    "updatedAt": "2026-07-30T12:00:00.000Z"
+  }
+}</pre>
+    <p><strong>Business logic:</strong> Only one unresolved issue per product. If a paid order is found, any paid seller transfer is reversed first, then the buyer payment is refunded, the order becomes <code>refunded</code>, and status history is appended. The seller is emailed after the issue is created.</p>
+    <p><strong>Errors:</strong> <code>400</code> invalid fields/enum or unresolved duplicate; <code>401/403</code> auth; <code>404</code> product absent; <code>500</code> Stripe/email/database failure.</p>
+    <div class="warning">Email sending is awaited after issue creation. An email failure can make the HTTP request return 500 even though financial actions and/or the issue database write already occurred. Always refetch issues and the order before offering a retry.</div>
+  </section>
+
+  <section class="endpoint">
+    <h3><span class="method patch">PATCH</span><span class="path">/issues/:id/resolve</span></h3>
+    <p><strong>Purpose:</strong> Close an unresolved issue by deleting or relisting its product.</p>
+    <p><strong>Authentication:</strong> Bearer token; <code>ADMIN</code> or <code>SUPER_ADMIN</code>.</p>
+    <table class="schema">
+      <tr><th>Body field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      <tr><td>action</td><td>enum</td><td>Yes</td><td><code>delete</code> or <code>make_available</code>.</td></tr>
+    </table>
+    <pre>PATCH /api/v1/issues/66e0f1234567890123456330/resolve
+Authorization: Bearer &lt;accessToken&gt;
+Content-Type: application/json
+
+{ "action": "make_available" }</pre>
+    <h4>200 response</h4>
+    <pre>{
+  "success": true,
+  "message": "Issue resolved successfully",
+  "data": {
+    "_id": "66e0...330",
+    "product": { "_id": "66c0...110", "name": "Classic Flap Bag", "...": "..." },
+    "issueType": "verification_failed",
+    "reason": "Serial number could not be authenticated",
+    "resolved": true,
+    "...": "..."
+  }
+}</pre>
+    <p><strong>Action behavior:</strong> <code>delete</code> deletes the product’s object-storage files and database record. <code>make_available</code> sets product status to available and clears its buyer. Both email the seller, mark the issue resolved, and clear product-list cache.</p>
+    <p><strong>Errors:</strong> <code>400</code> invalid action or already resolved; <code>401/403</code> auth; <code>404</code> issue/product absent; <code>500</code> storage/email/database failure.</p>
+    <div class="warning">The <code>adminId</code> passed to the service is not stored as a resolver/audit field. Resolution is not transactionally atomic; refetch after an error.</div>
+  </section>
+
+  <h2 id="reference" class="page-break">7. Shared reference</h2>
+
+  <h3>7.1 TypeScript contract starter</h3>
+  <pre>type UserRole = "SUPER_ADMIN" | "ADMIN" | "USER";
+type UserStatus = "active" | "ban";
+type ProductStatus = "available" | "secured" | "sold";
+type IssueType = "buyer_refused" | "verification_failed";
+type IssueResolution = "delete" | "make_available";
+
+type OrderStatus =
+  | "pending_payment" | "secured" | "collection_pending" | "collected"
+  | "verification" | "payout_processing" | "ready_for_delivery"
+  | "delivered" | "completed" | "refunded" | "cancelled";
+
+type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+type PayoutStatus = "pending" | "processing" | "paid" | "failed" | "reversed";
+
+interface ApiSuccess&lt;T&gt; {
+  success: true;
+  message?: string;
+  pagination?: { total: number; limit: number; page: number; totalPage: number };
+  data?: T;
+}
+
+interface ApiFailure {
+  success: false;
+  message: string;
+  errorMessages?: Array&lt;{ path: string; message: string }&gt;;
+  stack?: string;
+}</pre>
+
+  <h3>7.2 Frontend request policy</h3>
+  <ol>
+    <li>Attach <code>Bearer &lt;accessToken&gt;</code> to protected requests.</li>
+    <li>On the first 401, run one shared/single-flight refresh request using the refresh token in JSON body.</li>
+    <li>Retry the original request once with the new access token. If refresh fails, clear auth state and return to login.</li>
+    <li>Never automatically retry non-idempotent product, issue, status, or payout mutations after a network/500 response. Refetch first.</li>
+    <li>Debounce user/product search and use the exact <code>searchTerm</code> query key.</li>
+    <li>For multipart requests, let the browser create the <code>Content-Type</code> boundary.</li>
+    <li>Disable workflow actions while pending and refetch order/product/issue data after any mutation.</li>
+  </ol>
+
+  <h3>7.3 Known backend gaps affecting the dashboard</h3>
+  <table>
+    <tr><th>Gap</th><th>Frontend handling</th></tr>
+    <tr><td>No aggregate metrics/stats endpoint</td><td>Do not fetch unbounded lists to compute dashboard totals. Request a backend aggregation endpoint before shipping analytics cards/charts.</td></tr>
+    <tr><td>No admin management, user detail, ban/unban, or role mutation APIs</td><td>Keep those controls out of the UI or clearly disabled.</td></tr>
+    <tr><td>Issues have no pagination/filtering</td><td>Filter locally only for small datasets; prioritize a paginated backend endpoint as volume grows.</td></tr>
+    <tr><td>Order admin list has no text search</td><td>Use exact filters and direct detail navigation by document ID. Do not send <code>searchTerm</code>.</td></tr>
+    <tr><td>Product listing defaults to available</td><td>Request each non-available status explicitly; there is no single “all statuses” query.</td></tr>
+    <tr><td><code>SUPER_ADMIN</code> omitted from change-password route</td><td>Hide that action for super admins until backend permission is corrected.</td></tr>
+    <tr><td>No transactional boundary around external side effects</td><td>After 500/network failures, refetch before retrying payout, issue, and resolution actions.</td></tr>
+    <tr><td>No documented proof-download endpoint</td><td><code>proofOfPurchase</code> is a returned object-storage URL. Access behavior depends on CDN/bucket policy.</td></tr>
+  </table>
+
+  <h3>7.4 Integration acceptance checklist</h3>
+  <ul>
+    <li>Login stores both tokens and immediately loads <code>/user/profile</code>.</li>
+    <li>One refresh request services concurrent 401 responses; each original request retries at most once.</li>
+    <li>Admin routing checks uppercase role values exactly.</li>
+    <li>Tables consume <code>data</code> as the row array and <code>pagination</code> as metadata.</li>
+    <li>Empty UI filters are removed instead of sent as query parameters.</li>
+    <li>Order controls are derived from the state-transition table, not from a free-form status dropdown.</li>
+    <li>Payout and issue actions display consequences and require confirmation.</li>
+    <li>Mutation errors trigger a resource refetch before a retry is offered.</li>
+    <li>Product and profile upload validation mirrors MIME, signature, and configured size constraints.</li>
+    <li>Unsupported capabilities listed above are not represented as working controls.</li>
+  </ul>
+
+  <div class="note"><strong>Audit basis.</strong> This contract was derived from <code>src/routes/index.ts</code>, module route/validation/controller/service/model files, authentication and upload middleware, query builder, enums, and the global response/error handlers in the backend repository as of 30 July 2026.</div>
+</body>
+</html>

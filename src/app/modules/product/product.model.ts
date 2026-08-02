@@ -4,7 +4,16 @@ import { IProduct } from './product.interface';
 const productSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true },
-    image: { type: String, required: true },
+    images: {
+      type: [String],
+      required: true,
+      validate: {
+        validator: (images: string[]) => images.length >= 1 && images.length <= 4,
+        message: 'A product must have between 1 and 4 images',
+      },
+    },
+    // Transitional read support for records created before images[] was added.
+    image: { type: String },
     brand: { type: String, required: true },
     description: { type: String, required: true },
     price: { type: Number, required: true },
@@ -24,6 +33,16 @@ const productSchema = new Schema<IProduct>(
     timestamps: true,
     toJSON: {
       virtuals: true,
+      transform: (_document, returned) => {
+        if (
+          (!returned.images || returned.images.length === 0) &&
+          returned.image
+        ) {
+          returned.images = [returned.image];
+        }
+        delete returned.image;
+        return returned;
+      },
     },
   },
 );

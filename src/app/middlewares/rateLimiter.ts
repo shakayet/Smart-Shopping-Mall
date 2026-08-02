@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request } from 'express';
 
 const extractEmailForRateLimitKey = (req: Request): string => {
@@ -36,7 +36,7 @@ export const otpGenerationLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
     const email = extractEmailForRateLimitKey(req);
-    return `${req.ip ?? 'unknown'}:${email}`;
+    return `${ipKeyGenerator(req.ip ?? 'unknown')}:${email}`;
   },
   message: {
     success: false,
@@ -52,7 +52,7 @@ export const otpVerificationLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
     const email = extractEmailForRateLimitKey(req);
-    return `${req.ip ?? 'unknown'}:${email}`;
+    return `${ipKeyGenerator(req.ip ?? 'unknown')}:${email}`;
   },
   message: {
     success: false,
