@@ -89,6 +89,15 @@ function ensureAccountStatus<T extends IAccountStatus>(
   }
 }
 
+const ensurePasswordlessUser = (user: IAccountStatus) => {
+  if (ADMIN_ROLES.has(user.role)) {
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      'Administrators must sign in with email and password.',
+    );
+  }
+};
+
 const hashOtp = async (otp: number | string): Promise<string> =>
   bcrypt.hash(String(otp), Number(config.bcrypt_salt_rounds));
 
@@ -156,6 +165,7 @@ const requestLoginOtpToDB = async (payload: IRequestLoginOtp) => {
   }
 
   ensureAccountStatus(user, { allowUser: true });
+  ensurePasswordlessUser(user);
 
   enforceResendCooldown(user.loginOtp);
 
@@ -204,6 +214,7 @@ const resendLoginOtpToDB = async (payload: IResendLoginOtp) => {
     };
   }
   ensureAccountStatus(user, { allowUser: true });
+  ensurePasswordlessUser(user);
   enforceResendCooldown(user.loginOtp);
 
   const plainOtp = generateOTP();
@@ -256,6 +267,7 @@ const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
     );
   }
   ensureAccountStatus(user, { allowUser: true });
+  ensurePasswordlessUser(user);
 
   const otp = user.loginOtp;
   if (!otp || !otp.hashedCode) {

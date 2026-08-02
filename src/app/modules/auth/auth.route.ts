@@ -20,16 +20,15 @@ router.post(
   AuthController.loginAdmin,
 );
 
-// Legacy /login endpoint: route kept for backwards compatibility with existing clients;
-// service layer now rejects USER role password attempts (admins only). Prefer /admin/login.
+// App login step 1: email only. A one-time code is sent to the user.
 router.post(
   '/login',
-  authLimiter,
-  validateRequest(AuthValidation.createLoginZodSchema),
-  AuthController.loginUser,
+  otpGenerationLimiter,
+  validateRequest(AuthValidation.createRequestLoginOtpZodSchema),
+  AuthController.requestLoginOtp,
 );
 
-// -------------------- PASSWORDLESS LOGIN (OTP) for USER role (admins may also use it) --------------------
+// -------------------- PASSWORDLESS LOGIN (OTP) for USER role --------------------
 router.post(
   '/request-login-otp',
   otpGenerationLimiter,

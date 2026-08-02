@@ -38,22 +38,7 @@ const loginAdmin = catchAsync(async (req: Request, res: Response) => {
 // login service (which itself now rejects USER role password attempts).
 // Kept for backwards compatibility with old client builds briefly — new clients
 // should use /auth/admin/login or the passwordless /auth/request-login-otp flow.
-const loginUser = catchAsync(async (req: Request, res: Response) => {
-  const { ...loginData } = req.body;
-  const result = await AuthService.loginUserFromDB(loginData);
-
-  sendResponse(res, {
-    success: true,
-    statusCode: StatusCodes.OK,
-    message: 'User logged in successfully.',
-    data: {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-    },
-  });
-});
-
-// --------------- Passwordless login (OTP) flow for USER role (also works for admins) ---------------
+// --------------- Passwordless login (OTP) flow for USER role ---------------
 const requestLoginOtp = catchAsync(async (req: Request, res: Response) => {
   const { email } = req.body;
   const result = await AuthService.requestLoginOtpToDB({ email });
@@ -162,7 +147,6 @@ const refreshToken = catchAsync(async (req: Request, res: Response) => {
 
 export const AuthController = {
   verifyEmail,
-  loginUser,
   loginAdmin,
   requestLoginOtp,
   resendLoginOtp,
