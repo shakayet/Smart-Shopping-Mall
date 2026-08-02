@@ -26,12 +26,20 @@ const getAllUsersToDB = async (query: Record<string, unknown>) => {
   return { result, meta };
 };
 
-const createUserToDB = async (payload: Partial<IUser>): Promise<IUser> => {
+type CreateUserPayload = Partial<IUser> & {
+  firstName?: string;
+  lastName?: string;
+};
+
+const createUserToDB = async (payload: CreateUserPayload): Promise<IUser> => {
   // App users are passwordless. Enforce this even for internal callers that
   // do not pass through the HTTP validation middleware.
-  const userData = { ...payload };
+  const { firstName, lastName, ...userData } = payload;
   delete userData.password;
   userData.role = USER_ROLES.USER;
+  userData.name = [firstName, lastName]
+    .filter((part): part is string => Boolean(part))
+    .join(' ');
   const createUser = await User.create(userData);
   if (!createUser) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Failed to create user');
