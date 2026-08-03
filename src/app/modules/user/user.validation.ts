@@ -7,6 +7,7 @@ const createUserZodSchema = z.object({
     email: z.string({ required_error: 'Email is required' }).email('Invalid email'),
     contact: z.string().optional(),
     location: z.string().optional(),
+    country: z.string().optional(),
     profile: z.string().optional(),
   }),
 });
@@ -15,6 +16,8 @@ const updateUserZodSchema = z.object({
   name: z.string().optional(),
   email: z.string().optional(),
   image: z.string().optional(),
+  location: z.string().optional(),
+  country: z.string().optional(),
 });
 
 export const UserValidation = {

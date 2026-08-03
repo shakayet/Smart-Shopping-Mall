@@ -6,6 +6,9 @@ const createProductZodSchema = z.object({
     description: z.string({ required_error: 'Description is required' }),
     price: z.number({ required_error: 'Price is required' }),
     condition: z.string({ required_error: 'Condition is required' }),
+    originalPackagingAvailable: z.boolean({
+      required_error: 'Original packaging availability is required',
+    }),
 });
 
 const updateProductZodSchema = z.object({
@@ -15,6 +18,8 @@ const updateProductZodSchema = z.object({
     description: z.string().optional(),
     price: z.number().optional(),
     condition: z.string().optional(),
+    originalPackagingAvailable: z.boolean().optional(),
+    proofOfPurchase: z.string().url().nullable().optional(),
     status: z.enum(['available', 'secured', 'sold']).optional(),
   }),
 });

@@ -26,6 +26,12 @@ router
           productData = {
             ...req.body,
             price: req.body.price ? Number(req.body.price) : undefined,
+            originalPackagingAvailable:
+              req.body.originalPackagingAvailable === 'true'
+                ? true
+                : req.body.originalPackagingAvailable === 'false'
+                  ? false
+                  : req.body.originalPackagingAvailable,
           };
         }
 

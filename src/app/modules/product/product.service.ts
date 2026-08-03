@@ -7,6 +7,7 @@ import { Product } from './product.model';
 import { uploadToS3, deleteFromS3 } from '../../../helpers/s3Helper';
 import { cache } from '../../../helpers/cache';
 import fs from 'fs';
+import { ConnectService } from '../payment/connect.service';
 
 export const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
@@ -15,6 +16,8 @@ const createProductToDB = async (
   payload: Partial<IProduct>,
   files: any
 ) => {
+  await ConnectService.assertPayoutReady(String(payload.seller));
+
   const imageFiles = files?.image ?? [];
   if (imageFiles.length < 1 || imageFiles.length > 4) {
     throw new ApiError(
@@ -62,9 +65,42 @@ const createProductToDB = async (
     payload.proofOfPurchase = proofUrl;
   }
 
-  const result = await Product.create(payload);
+  const created = await Product.create(payload);
+  const result = await Product.findById(created._id).populate(
+    'seller',
+    'name image avatar contact location country',
+  );
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
-  return result;
+  return toPublicProduct(result);
+};
+
+const toPublicProduct = (product: any) => {
+  if (!product) return product;
+  const value = typeof product.toJSON === 'function' ? product.toJSON() : product;
+  value.originalPackagingAvailable = Boolean(
+    value.originalPackagingAvailable,
+  );
+  value.proofOfPurchase = value.proofOfPurchase || null;
+  if (value.seller && typeof value.seller === 'object') {
+    const { _id, name, avatar, image, contact } = value.seller;
+    let { location, country } = value.seller;
+    // Keep legacy "City, Country" profiles compatible while new profiles
+    // persist the two values independently.
+    if (!country && typeof location === 'string' && location.includes(',')) {
+      const locationParts = location.split(',').map((part: string) => part.trim());
+      country = locationParts.pop() || null;
+      location = locationParts.join(', ');
+    }
+    value.seller = {
+      _id,
+      name,
+      profileImage: avatar || image || null,
+      contact,
+      location,
+      country: country || null,
+    };
+  }
+  return value;
 };
 
 const getAllProductsFromDB = async (query: Record<string, unknown>) => {
@@ -91,11 +127,14 @@ const getAllProductsFromDB = async (query: Record<string, unknown>) => {
     .fields();
 
   const [result, meta] = await Promise.all([
-    productQuery.modelQuery.populate('seller', 'name location contact'),
+    productQuery.modelQuery.populate(
+      'seller',
+      'name image avatar contact location country',
+    ),
     productQuery.getPaginationInfo(),
   ]);
 
-  const response = { result, meta };
+  const response = { result: result.map(toPublicProduct), meta };
   cache.set(cacheKey, response, PRODUCT_LIST_CACHE_TTL_MS);
 
   return response;
@@ -104,12 +143,12 @@ const getAllProductsFromDB = async (query: Record<string, unknown>) => {
 const getProductDetailsFromDB = async (id: string) => {
   const result = await Product.findById(id).populate(
     'seller',
-    'name location contact',
+    'name image avatar contact location country',
   );
   if (!result) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
   }
-  return result;
+  return toPublicProduct(result);
 };
 
 const updateProductToDB = async (

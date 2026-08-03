@@ -81,6 +81,9 @@ const userSchema = new Schema<IUser, UserModal>(
     location: {
       type: String,
     },
+    country: {
+      type: String,
+    },
     password: {
       type: String,
       select: 0,

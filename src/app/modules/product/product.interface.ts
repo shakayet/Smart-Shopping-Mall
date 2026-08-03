@@ -12,7 +12,8 @@ export interface IProduct {
   description: string;
   price: number;
   condition: string;
-  proofOfPurchase?: string;
+  originalPackagingAvailable: boolean;
+  proofOfPurchase?: string | null;
   status: IProductStatus;
   seller: Types.ObjectId;
   orderId: number;

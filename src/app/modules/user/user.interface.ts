@@ -26,6 +26,7 @@ export type IUser = {
   email: string;
   password?: string;
   location?: string;
+  country?: string;
   image?: string;
   avatar?: string;
   provider?: 'local' | 'google';

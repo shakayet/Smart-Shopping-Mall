@@ -66,6 +66,16 @@ const accountStatus = async (userId: string) => {
   };
 };
 
+const assertPayoutReady = async (userId: string) => {
+  const status = await accountStatus(userId);
+  if (!status.connected || !status.detailsSubmitted || !status.payoutsEnabled) {
+    throw new ApiError(
+      StatusCodes.CONFLICT,
+      'Complete Stripe payout onboarding before creating a product listing',
+    );
+  }
+};
+
 const onboardingLink = async (userId: string) => {
   const user = await User.findById(userId).select('+stripeAccountId');
   if (!user) throw new ApiError(StatusCodes.NOT_FOUND, 'User not found');
@@ -101,4 +111,5 @@ export const ConnectService = {
   accountStatus,
   statusFromState,
   refreshFromState,
+  assertPayoutReady,
 };
