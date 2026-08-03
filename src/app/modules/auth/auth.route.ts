@@ -90,8 +90,8 @@ router.post(
 router.post(
   '/resend-otp',
   otpGenerationLimiter,
-  validateRequest(AuthValidation.createResendOtpZodSchema),
-  AuthController.resendOtp,
+  validateRequest(AuthValidation.createResendLoginOtpZodSchema),
+  AuthController.resendLoginOtp,
 );
 
 router.post(
