@@ -8,6 +8,13 @@ import { ProductValidation } from './product.validation';
 
 const router = express.Router();
 
+// Admin endpoints
+router.get(
+  '/admin/all',
+  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
+  ProductController.getAllProductsForAdmin,
+);
+
 router
   .route('/')
   .get(ProductController.getAllProducts)

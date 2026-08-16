@@ -34,6 +34,20 @@ const getAllProducts = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getAllProductsForAdmin = catchAsync(
+  async (req: Request, res: Response) => {
+    const result = await ProductService.getAllProductsForAdmin(req.query);
+
+    sendResponse(res, {
+      success: true,
+      statusCode: StatusCodes.OK,
+      message: 'Products retrieved successfully',
+      pagination: result.meta,
+      data: result.result,
+    });
+  },
+);
+
 const getProductDetails = catchAsync(async (req: Request, res: Response) => {
   const result = await ProductService.getProductDetailsFromDB(req.params.id);
 
@@ -77,6 +91,7 @@ const deleteProduct = catchAsync(async (req: Request, res: Response) => {
 export const ProductController = {
   createProduct,
   getAllProducts,
+  getAllProductsForAdmin,
   getProductDetails,
   updateProduct,
   deleteProduct,

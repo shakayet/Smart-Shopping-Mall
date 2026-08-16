@@ -140,6 +140,25 @@ const getAllProductsFromDB = async (query: Record<string, unknown>) => {
   return response;
 };
 
+const getAllProductsForAdmin = async (query: Record<string, unknown>) => {
+  const productQuery = new QueryBuilder(Product.find(), query)
+    .search(['name', 'brand', 'description'])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const [result, meta] = await Promise.all([
+    productQuery.modelQuery.populate(
+      'seller',
+      'name image avatar contact location country',
+    ),
+    productQuery.getPaginationInfo(),
+  ]);
+
+  return { result: result.map(toPublicProduct), meta };
+};
+
 const getProductDetailsFromDB = async (id: string) => {
   const result = await Product.findById(id).populate(
     'seller',
@@ -222,6 +241,7 @@ const deleteProductFromDB = async (
 export const ProductService = {
   createProductToDB,
   getAllProductsFromDB,
+  getAllProductsForAdmin,
   getProductDetailsFromDB,
   updateProductToDB,
   deleteProductFromDB,
