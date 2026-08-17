@@ -47,6 +47,18 @@ const getUserProfile = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const getProfileStats = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user as any;
+  const result = await UserService.getProfileStatsFromDB(user.id);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: StatusCodes.OK,
+    message: 'Profile statistics retrieved successfully',
+    data: result,
+  });
+});
+
 //update profile
 const updateProfile = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -83,6 +95,7 @@ export const UserController = {
   getAllUsers,
   createUser,
   getUserProfile,
+  getProfileStats,
   updateProfile,
   deleteAccount,
 };

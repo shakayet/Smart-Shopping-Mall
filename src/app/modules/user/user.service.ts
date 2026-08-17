@@ -1,6 +1,12 @@
 import { StatusCodes } from 'http-status-codes';
 import { JwtPayload } from 'jsonwebtoken';
 import { USER_ROLES } from '../../../enums/user';
+import {
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+  PAYOUT_STATUS,
+} from '../../../enums/order';
+import config from '../../../config';
 import ApiError from '../../../errors/ApiError';
 import { emailHelper } from '../../../helpers/emailHelper';
 import { emailTemplate } from '../../../shared/emailTemplate';
@@ -9,6 +15,8 @@ import generateOTP from '../../../util/generateOTP';
 import QueryBuilder from '../../builder/QueryBuilder';
 import { IUser } from './user.interface';
 import { User } from './user.model';
+import { Order } from '../order/order.model';
+import { Product } from '../product/product.model';
 
 const getAllUsersToDB = async (query: Record<string, unknown>) => {
   const userQuery = new QueryBuilder(User.find(), query)
@@ -114,6 +122,53 @@ const getUserProfileFromDB = async (user: JwtPayload) => {
   return toUserProfile(isExistUser);
 };
 
+const getProfileStatsFromDB = async (userId: string) => {
+  const user = await User.findById(userId).select('status verified').lean();
+  if (!user) {
+    throw new ApiError(StatusCodes.UNAUTHORIZED, 'User account not found');
+  }
+  if (user.status !== 'active' || !user.verified) {
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      'Your account cannot access profile statistics',
+    );
+  }
+
+  const [totalProductsListed, totalProductsPurchased, earnings] =
+    await Promise.all([
+      Product.countDocuments({ seller: userId }),
+      Order.countDocuments({
+        buyer: userId,
+        'payment.status': PAYMENT_STATUS.PAID,
+        status: {
+          $nin: [ORDER_STATUS.CANCELLED, ORDER_STATUS.REFUNDED],
+        },
+      }),
+      Order.aggregate<{ totalEarnings: number }>([
+        {
+          $match: {
+            seller: user._id,
+            payoutStatus: PAYOUT_STATUS.PAID,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalEarnings: { $sum: '$sellerPayout' },
+          },
+        },
+        { $project: { _id: 0, totalEarnings: 1 } },
+      ]),
+    ]);
+
+  return {
+    totalProductsListed,
+    totalProductsPurchased,
+    totalEarnings: Number((earnings[0]?.totalEarnings ?? 0).toFixed(2)),
+    currency: config.stripe.currency.toUpperCase(),
+  };
+};
+
 const updateProfileToDB = async (
   user: JwtPayload,
   payload: Partial<IUser>,
@@ -156,6 +211,7 @@ export const UserService = {
   getAllUsersToDB,
   createUserToDB,
   getUserProfileFromDB,
+  getProfileStatsFromDB,
   updateProfileToDB,
   deleteAccountFromDB,
   toUserProfile,

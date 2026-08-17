@@ -53,5 +53,7 @@ const orderSchema = new Schema<IOrder>(
 orderSchema.index({ buyer: 1 });
 orderSchema.index({ seller: 1 });
 orderSchema.index({ status: 1 });
+orderSchema.index({ buyer: 1, 'payment.status': 1, status: 1 });
+orderSchema.index({ seller: 1, payoutStatus: 1 });
 
 export const Order = model<IOrder>('Order', orderSchema);

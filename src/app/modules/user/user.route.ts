@@ -6,6 +6,12 @@ import { UserController } from './user.controller';
 import { UserValidation } from './user.validation';
 const router = express.Router();
 
+router.get(
+  '/profile/stats',
+  auth(USER_ROLES.USER),
+  UserController.getProfileStats,
+);
+
 router
   .route('/profile')
   .get(

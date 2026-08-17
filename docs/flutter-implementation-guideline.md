@@ -1149,8 +1149,9 @@ enum UserStatus { active, ban }
 | Delete account | `DELETE /user/profile` (confirm dialog, then logout) |
 
 **Profile header stats** (itemsListed, purchasesCount, closetValue):
-- Backend may not yet expose as aggregated fields in `/profile` response.
-- Compute client-side: wardrobes listings + purchases order sums for now.
+- Load them from `GET /user/profile/stats`.
+- Response fields are `totalProductsListed`, `totalProductsPurchased`, `totalEarnings`, and `currency`.
+- `totalProductsPurchased` counts paid, non-cancelled/non-refunded orders. `totalEarnings` includes only seller payouts marked paid and uses the stored post-fee `sellerPayout` amount.
 
 ### 8.8 Issues / Disputes (Admin-only in backend)
 
@@ -1670,6 +1671,7 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 | Method | Path | Auth | Body | Response `data` |
 |--------|------|------|------|----------|
 | GET | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | `UserModel`; `phone`, `country`, and `location` are always present (nullable). Legacy `contact` is returned as `phone` when `phone` has not been set. |
+| GET | `/user/profile/stats` | USER (JWT) | — | `{ totalProductsListed, totalProductsPurchased, totalEarnings, currency }` |
 | PATCH | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | **multipart**: form field `data` = JSON of `{name?, email?, image?, contact?, phone?, location?, country?}` **OR** the same values as flat form fields + multipart file field `image` | Updated `UserModel` |
 | DELETE | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | Deletes account |
 | GET | `/user/` | ADMIN, SUPER_ADMIN | query: page/limit/searchTerm/sort | Paginated list of all users (admin view) |
