@@ -60,3 +60,21 @@ export const otpVerificationLimiter = rateLimit({
       'Too many verification attempts. Please request a new OTP and try again.',
   },
 });
+
+export const paymentMethodMutationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => {
+    const authenticatedUser = req.user as { id?: unknown } | undefined;
+    const userId = authenticatedUser?.id;
+    return typeof userId === 'string'
+      ? `user:${userId}`
+      : `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+  },
+  message: {
+    success: false,
+    message: 'Too many payment method changes. Please try again later.',
+  },
+});

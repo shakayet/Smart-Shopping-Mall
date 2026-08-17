@@ -36,6 +36,7 @@ export type IUser = {
   authentication?: IAuthentication;
   loginOtp?: ILoginOtp;
   stripeAccountId?: string;
+  stripeCustomerId?: string;
 };
 
 export type UserModal = {

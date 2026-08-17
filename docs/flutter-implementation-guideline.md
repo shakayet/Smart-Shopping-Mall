@@ -1414,7 +1414,12 @@ Stripe.instance.presentPaymentSheet()
    }
    ```
 
-3. For **saved cards** — backend endpoints `GET /payment-methods`, `POST /payment-methods` NOT yet implemented (only webhook exists). Hide "Saved Cards" UI for now until backend adds PaymentMethod CRUD + SetupIntent endpoints.
+3. For **saved cards**, use these USER-authenticated endpoints:
+   - `GET /payment-methods?limit=20&startingAfter=pm_...` lists sanitized cards and returns `hasMore` / `nextCursor`.
+   - `POST /payment-methods/setup-intent` returns `data.clientSecret`. Send an empty body and an optional unique `Idempotency-Key` header, then collect card data directly with Stripe's SDK.
+   - `DELETE /payment-methods/:id` removes a card owned by the authenticated user's Stripe Customer.
+
+   Never send card numbers or CVC values to this backend.
 
 ---
 
@@ -1742,7 +1747,7 @@ Priority order for backend tweaks that the Flutter team will need early:
 1. **[P0]** Add `POST /auth/resend-otp-public` accepting JSON `{ email }` without JWT (rate-limited, same limiter as login). Or relax existing `/resend-otp` auth to allow `?email=` for unverified accounts.
 2. **[P1]** Socket.io implementation: add explicit `join('user:<userId>')` handler + emit `order:status_updated` on order status transitions. Today sockets is scaffolded but no event wiring.
 3. **[P1]** Add profile-aggregated fields: itemsListed count, purchasesCount, closetValue (AED sum of sellerPayout for completed orders + current listed available product price totals) — saves N+1 client calls.
-4. **[P2]** PaymentMethod CRUD endpoints (GET/POST/DELETE `/payment-methods` + SetupIntent creation) for Saved Cards UX.
+4. **[DONE]** Saved-card endpoints are available at `GET /payment-methods`, `POST /payment-methods/setup-intent`, and `DELETE /payment-methods/:id`.
 5. **[P2]** Add `PATCH /products/:id/media` (multipart `image` + `doc` route with fileUploadHandler) to enable editing product images without recreating a listing.
 6. **[P3]** Normalize reset-password to use `Authorization: Bearer <resetJWT>` pattern for consistency (currently raw header) to simplify Flutter's interceptor pattern.
 

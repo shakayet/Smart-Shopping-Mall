@@ -27,6 +27,7 @@ import {
 import { IDeliveryDetails } from './order.interface';
 import { Order } from './order.model';
 import { User } from '../user/user.model';
+import { PaymentMethodService } from '../payment-method/payment-method.service';
 
 const generateOrderNumber = () => {
   const random = Math.floor(100 + Math.random() * 900);
@@ -84,6 +85,7 @@ const checkoutOrder = async (
 
   let paymentIntent: Awaited<ReturnType<typeof createPaymentIntent>> | undefined;
   try {
+    const customerId = await PaymentMethodService.getOrCreateCustomerId(buyerId);
     paymentIntent = await createPaymentIntent(
       product.price,
       {
@@ -92,6 +94,7 @@ const checkoutOrder = async (
         buyerId,
       },
       `checkout:${orderNumber}`,
+      customerId,
     );
 
     const order = await Order.create({

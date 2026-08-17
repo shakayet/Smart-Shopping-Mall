@@ -8,11 +8,13 @@ export const createPaymentIntent = async (
   amount: number,
   metadata: Record<string, string>,
   idempotencyKey: string,
+  customerId: string,
 ) => {
   return stripeClient.paymentIntents.create(
     {
       amount: toMinorUnits(amount),
       currency: config.stripe.currency,
+      customer: customerId,
       metadata,
       transfer_group: metadata.orderNumber,
       automatic_payment_methods: { enabled: true },
@@ -33,6 +35,55 @@ export const createRefund = async (
 
 export const cancelPaymentIntent = async (paymentIntentId: string) =>
   stripeClient.paymentIntents.cancel(paymentIntentId);
+
+export const createStripeCustomer = async (
+  userId: string,
+  email: string,
+  name?: string,
+) =>
+  stripeClient.customers.create(
+    {
+      email,
+      name: name || undefined,
+      metadata: { appUserId: userId },
+    },
+    { idempotencyKey: `stripe-customer:${userId}` },
+  );
+
+export const listCustomerCardPaymentMethods = async (
+  customerId: string,
+  limit: number,
+  startingAfter?: string,
+) =>
+  stripeClient.paymentMethods.list({
+    customer: customerId,
+    type: 'card',
+    limit,
+    starting_after: startingAfter,
+  });
+
+export const createCardSetupIntent = async (
+  customerId: string,
+  userId: string,
+  idempotencyKey: string,
+) =>
+  stripeClient.setupIntents.create(
+    {
+      customer: customerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+      metadata: { appUserId: userId },
+    },
+    { idempotencyKey },
+  );
+
+export const retrieveCustomerPaymentMethod = async (
+  customerId: string,
+  paymentMethodId: string,
+) => stripeClient.customers.retrievePaymentMethod(customerId, paymentMethodId);
+
+export const detachPaymentMethod = async (paymentMethodId: string) =>
+  stripeClient.paymentMethods.detach(paymentMethodId);
 
 export const createConnectedAccount = async (email: string) =>
   stripeClient.accounts.create({
