@@ -1123,8 +1123,10 @@ class UserModel with _$UserModel {
     required String name,
     required UserRole role,
     String? contact,
+    String? phone,
     required String email,
     String? location,
+    String? country,
     String? image,          // avatar/profile image URL
     String? avatar,
     String? provider,       // 'local' | 'google'
@@ -1667,8 +1669,8 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 
 | Method | Path | Auth | Body | Response `data` |
 |--------|------|------|------|----------|
-| GET | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | `UserModel` |
-| PATCH | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | **multipart**: form field `data` = JSON of `{name?, email?, password?, image?}` **OR** flat form fields directly + multipart file field `image` (avatar/jpg/png). Middleware auto-selects pattern | Updated `UserModel` |
+| GET | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | `UserModel`; `phone`, `country`, and `location` are always present (nullable). Legacy `contact` is returned as `phone` when `phone` has not been set. |
+| PATCH | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | **multipart**: form field `data` = JSON of `{name?, email?, image?, contact?, phone?, location?, country?}` **OR** the same values as flat form fields + multipart file field `image` | Updated `UserModel` |
 | DELETE | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | Deletes account |
 | GET | `/user/` | ADMIN, SUPER_ADMIN | query: page/limit/searchTerm/sort | Paginated list of all users (admin view) |
 | POST | `/user/` | Public (rate limited) | JSON: `{ name:string, email:string, password:string, contact:string, location:string, profile?:string }` | Created `UserModel` (registration endpoint). User NOT auto-verified. Proceed to /auth/verify-email with emailed OTP. |

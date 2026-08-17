@@ -78,6 +78,9 @@ const userSchema = new Schema<IUser, UserModal>(
     contact: {
       type: String,
     },
+    phone: {
+      type: String,
+    },
     location: {
       type: String,
     },

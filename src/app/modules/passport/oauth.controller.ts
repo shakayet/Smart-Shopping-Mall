@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { Secret } from 'jsonwebtoken';
+import { JwtPayload, Secret } from 'jsonwebtoken';
 import config from '../../../config';
 import ApiError from '../../../errors/ApiError';
+import { UserService } from '../user/user.service';
 import { jwtHelper } from '../../../helpers/jwtHelper';
 import catchAsync from '../../../shared/catchAsync';
 import sendResponse from '../../../shared/sendResponse';
@@ -72,11 +73,15 @@ const exchangeCode = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getProfile = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserService.getUserProfileFromDB(
+    req.user as JwtPayload,
+  );
+
   sendResponse(res, {
     success: true,
     statusCode: StatusCodes.OK,
     message: 'User profile retrieved successfully',
-    data: req.user,
+    data: result,
   });
 });
 

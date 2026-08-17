@@ -31,6 +31,42 @@ type CreateUserPayload = Partial<IUser> & {
   lastName?: string;
 };
 
+const toUserProfile = (user: unknown) => {
+  const value = (
+    user &&
+    typeof user === 'object' &&
+    'toJSON' in user &&
+    typeof user.toJSON === 'function'
+      ? user.toJSON()
+      : user
+  ) as Record<string, unknown>;
+
+  delete value.password;
+  delete value.authentication;
+  delete value.loginOtp;
+  delete value.stripeAccountId;
+  delete value.stripeCustomerId;
+  delete value.__v;
+
+  let location = typeof value.location === 'string' ? value.location : null;
+  let country = typeof value.country === 'string' ? value.country : null;
+  if (!country && location?.includes(',')) {
+    const locationParts = location.split(',').map(part => part.trim());
+    country = locationParts.pop() || null;
+    location = locationParts.join(', ') || null;
+  }
+
+  return {
+    ...value,
+    phone:
+      (typeof value.phone === 'string' && value.phone) ||
+      (typeof value.contact === 'string' && value.contact) ||
+      null,
+    country,
+    location,
+  };
+};
+
 const createUserToDB = async (payload: CreateUserPayload): Promise<IUser> => {
   // App users are passwordless. Enforce this even for internal callers that
   // do not pass through the HTTP validation middleware.
@@ -68,22 +104,20 @@ const createUserToDB = async (payload: CreateUserPayload): Promise<IUser> => {
   return createUser;
 };
 
-const getUserProfileFromDB = async (
-  user: JwtPayload,
-): Promise<Partial<IUser>> => {
+const getUserProfileFromDB = async (user: JwtPayload) => {
   const { id } = user;
   const isExistUser = await User.isExistUserById(id);
   if (!isExistUser) {
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
 
-  return isExistUser;
+  return toUserProfile(isExistUser);
 };
 
 const updateProfileToDB = async (
   user: JwtPayload,
   payload: Partial<IUser>,
-): Promise<Partial<IUser | null>> => {
+) => {
   const { id } = user;
   const isExistUser = await User.isExistUserById(id);
   if (!isExistUser) {
@@ -99,7 +133,7 @@ const updateProfileToDB = async (
     new: true,
   });
 
-  return updateDoc;
+  return updateDoc ? toUserProfile(updateDoc) : null;
 };
 
 const deleteAccountFromDB = async (user: JwtPayload) => {
@@ -124,4 +158,5 @@ export const UserService = {
   getUserProfileFromDB,
   updateProfileToDB,
   deleteAccountFromDB,
+  toUserProfile,
 };

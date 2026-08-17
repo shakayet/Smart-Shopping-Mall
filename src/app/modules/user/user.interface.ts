@@ -23,6 +23,7 @@ export type IUser = {
   name: string;
   role: USER_ROLES;
   contact?: string;
+  phone?: string;
   email: string;
   password?: string;
   location?: string;

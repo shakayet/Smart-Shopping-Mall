@@ -5,9 +5,10 @@ const createUserZodSchema = z.object({
     firstName: z.string().trim().min(1).optional(),
     lastName: z.string().trim().min(1).optional(),
     email: z.string({ required_error: 'Email is required' }).email('Invalid email'),
-    contact: z.string().optional(),
-    location: z.string().optional(),
-    country: z.string().optional(),
+    contact: z.string().trim().max(32).optional(),
+    phone: z.string().trim().max(32).optional(),
+    location: z.string().trim().max(150).optional(),
+    country: z.string().trim().max(100).optional(),
     profile: z.string().optional(),
   }),
 });
@@ -16,8 +17,10 @@ const updateUserZodSchema = z.object({
   name: z.string().optional(),
   email: z.string().optional(),
   image: z.string().optional(),
-  location: z.string().optional(),
-  country: z.string().optional(),
+  contact: z.string().trim().max(32).optional(),
+  phone: z.string().trim().max(32).optional(),
+  location: z.string().trim().max(150).optional(),
+  country: z.string().trim().max(100).optional(),
 });
 
 export const UserValidation = {
