@@ -885,6 +885,8 @@ class ProductModel with _$ProductModel {
     required String image,        // Single S3 URL string (not array)
     required String brand,
     required String description,
+    String? material,
+    @Default(<String>[]) List<String> features,
     required double price,
     required String condition,
     String? proofOfPurchase,
@@ -1083,7 +1085,7 @@ From Product Detail → "Secure This Item":
 1. **Delivery Address Form**
    - Fields: `address`, `location` (city/area), `phone`
    - Call: `POST /orders/:productId/checkout`
-   - Body: `{ "deliveryDetails": { "address": "...", "location": "...", "phone": "..." } }`
+   - Body: `{ "deliveryDetails": { "address": "...", "location": "...", "phone": "..." }, "note": "..." }` (`note` is optional, max 1000 characters)
    - **Response `data`:** `{ order: OrderModel, clientSecret: string }`
      - `clientSecret` is the **Stripe PaymentIntent Client Secret** (NOT the paymentIntentId). It is `paymentIntent.client_secret` returned from Stripe. Flutter Stripe PaymentSheet requires THIS value.
 
@@ -1104,11 +1106,14 @@ From Product Detail → "Secure This Item":
 
 #### Order Detail: `GET /orders/:id`
 
-- Status timeline with dates (use `statusHistory`)
-- Seller/Buyer info (populated) based on role
-- "Contact Support" → mailto: or support chat
+- Returns an explicit UI contract: product brand/details/currency/verification, pickup window, estimated delivery, normalized seller/buyer phone and location, order note, progress steps, current progress, delivery status, unresolved issue state, and permitted actions.
+- `product.details.displayText` is assembled from structured `material` + `features`, falling back to description/condition for legacy products.
+- `pickupWindow.start`, `pickupWindow.end`, and `estimatedDeliveryAt` are nullable ISO-8601 UTC values. Format them in the device timezone.
+- Render `progress[]` directly (`state`: `completed | current | pending`) instead of duplicating the state machine in Flutter.
+- Control buttons with `actions.markAsDelivered.enabled`, `actions.reportIssue.enabled`, and `actions.cancelOrder.enabled`; each action includes its method, endpoint, payload where applicable, and `disabledReason`.
+- `payment` intentionally excludes Stripe PaymentIntent IDs. The backend webhook remains authoritative.
 - **Cancel Order (Buyer ONLY):** POST `/orders/:id/cancel`
-  ⚠️ **Only allowed when status = `SECURED` (NOT `PENDING_PAYMENT`).** Disable Cancel button otherwise.
+  Allowed only when status is `pending_payment` or `secured`. Prefer the server-provided action state.
   If cancelled, Stripe refund auto-triggered and product re-listed (status available).
 
 ### 8.7 User / Profile Module
@@ -1149,7 +1154,8 @@ enum UserStatus { active, ban }
 | Delete account | `DELETE /user/profile` (confirm dialog, then logout) |
 
 **Profile header stats** (itemsListed, purchasesCount, closetValue):
-- Load them from `GET /user/profile/stats`.
+- Load the signed-in user's statistics from `GET /user/profile/stats`.
+- Load another user's public statistics from `GET /user/profile/stats/:userId`.
 - Response fields are `totalProductsListed`, `totalProductsPurchased`, `totalEarnings`, and `currency`.
 - `totalProductsPurchased` counts paid, non-cancelled/non-refunded orders. `totalEarnings` includes only seller payouts marked paid and uses the stored post-fee `sellerPayout` amount.
 
@@ -1671,7 +1677,8 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 | Method | Path | Auth | Body | Response `data` |
 |--------|------|------|------|----------|
 | GET | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | `UserModel`; `phone`, `country`, and `location` are always present (nullable). Legacy `contact` is returned as `phone` when `phone` has not been set. |
-| GET | `/user/profile/stats` | USER (JWT) | — | `{ totalProductsListed, totalProductsPurchased, totalEarnings, currency }` |
+| GET | `/user/profile/stats` | USER (JWT) | — | Signed-in user's `{ totalProductsListed, totalProductsPurchased, totalEarnings, currency }` |
+| GET | `/user/profile/stats/:userId` | USER (JWT) | — | Target user's `{ totalProductsListed, totalProductsPurchased, totalEarnings, currency }` |
 | PATCH | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | **multipart**: form field `data` = JSON of `{name?, email?, image?, contact?, phone?, location?, country?}` **OR** the same values as flat form fields + multipart file field `image` | Updated `UserModel` |
 | DELETE | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | Deletes account |
 | GET | `/user/` | ADMIN, SUPER_ADMIN | query: page/limit/searchTerm/sort | Paginated list of all users (admin view) |
@@ -1696,9 +1703,9 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 | Method | Path | Auth | Body | Response `data` |
 |--------|------|------|------|----------|
 | GET | `/products` | Public | Query: `page`, `limit`, `searchTerm`⚠️ (not search), `brand`, `sort`, `fields`, `status` (default=available⚠️), direct filters | `ProductModel[]` + pagination meta. Default shows only `status=available`. |
-| POST | `/products` | USER+ (JWT) | **multipart**. Two equivalent options: (a) form field `data` = JSON `{ name, brand, description, price:number, condition }` + files, **OR** (b) flat form fields for each scalar + files. File fields: `image` (jpg/png, required⚠️), optionally `doc` (PDF for proof of purchase). | Created `ProductModel`. Status defaults to `available`. Fee not on product. |
+| POST | `/products` | USER+ (JWT) | **multipart**. Two equivalent options: (a) form field `data` = JSON `{ name, brand, description, material?, features?:string[], price:number, condition }` + files, **OR** (b) flat form fields for each scalar + files. Use JSON `data` when sending `features`. File fields: `image` (jpg/png, required⚠️), optionally `doc` (PDF for proof of purchase). | Created `ProductModel`. Status defaults to `available`. Fee not on product. |
 | GET | `/products/:id` | Public | — | Single product detail (seller populated). |
-| PATCH | `/products/:id` | USER (owner/seller) + ADMIN | **JSON only⚠️** (no multipart, no file uploads today). Body `{ name?, brand?, description?, price?, condition?, status?: 'available' | 'secured' | 'sold' }` | Updated product. Seller/admin role check in service. |
+| PATCH | `/products/:id` | USER (owner/seller) + ADMIN | **JSON only⚠️** (no multipart, no file uploads today). Body `{ name?, brand?, description?, material?, features?:string[], price?, condition?, status?: 'available' | 'secured' | 'sold' }` | Updated product. Seller/admin role check in service. |
 | DELETE | `/products/:id` | USER (owner) + ADMIN | — | `null`. Deletes images + proof from S3 + DB doc. |
 
 ### 17.5 Wishlist (`/wishlist`)
@@ -1713,12 +1720,13 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 
 | Method | Path | Auth | Body | Response `data` |
 |--------|------|------|------|----------|
-| POST | `/orders/:productId/checkout` | USER (JWT) — buyer only | JSON: `{ deliveryDetails: { address, location, phone } }`. Creates order + Stripe PaymentIntent. | **`{ order: OrderModel, clientSecret: string }`⚠️**. `clientSecret` (Stripe PaymentIntent client_secret) is what you need for `flutter_stripe` PaymentSheet. |
+| POST | `/orders/:productId/checkout` | USER (JWT) — buyer only | JSON: `{ deliveryDetails: { address, location, phone }, note?: string }`. Creates order + Stripe PaymentIntent. | **`{ order: OrderModel, clientSecret: string }`⚠️**. `clientSecret` (Stripe PaymentIntent client_secret) is what you need for `flutter_stripe` PaymentSheet. |
 | GET | `/orders` | USER+ (JWT) | Query: `?role=buyer` (default⚠️) \| `?role=seller` + page/limit/sort | Paginated `OrderModel[]`. Products + buyer/seller populated. |
-| GET | `/orders/:id` | USER (party to order) + ADMIN | — | Single order. Products/buyer/seller populated. |
-| POST | `/orders/:id/cancel` | USER (buyer only) | — | Cancelled order. **Only allowed from status=SECURED⚠️** (not pending_payment). Auto-triggers Stripe refund + product relisted. |
+| GET | `/orders/:id` | USER (party to order) + ADMIN | — | Sanitized UI-ready detail with product details/currency/verification, normalized parties, schedule, progress, delivery/issue state, and role-aware `actions`. |
+| POST | `/orders/:id/cancel` | USER (buyer only) | — | Cancelled order. Allowed from `pending_payment` or `secured`. Auto-triggers Stripe refund when applicable + product relisted. |
 | GET | `/orders/admin/all` | ADMIN, SUPER_ADMIN | Query: page/limit/status/filters | Admin full orders list |
 | PATCH | `/orders/:id/status` | ADMIN, SUPER_ADMIN | JSON: `{ status: OrderStatus_snake_case, note?: string }` | Updated order. State machine validates transition. Triggers Stripe refund if target ∈ {cancelled, refunded}. |
+| PATCH | `/orders/:id/schedule` | ADMIN, SUPER_ADMIN | JSON: `{ pickupWindow?: { start: ISO-8601, end: ISO-8601 }, estimatedDeliveryAt?: ISO-8601, note?: string }` | Updated UI-ready order detail. Delivery must be after pickup; terminal orders cannot be rescheduled. |
 | PATCH | `/orders/:id/payout` | ADMIN, SUPER_ADMIN | — | Marks seller payout as paid (manual payout button for ops). Min status required: payout_processing or later. |
 
 ### 17.7 AI (`/ai`)

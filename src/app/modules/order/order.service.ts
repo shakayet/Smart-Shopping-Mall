@@ -28,6 +28,8 @@ import { IDeliveryDetails } from './order.interface';
 import { Order } from './order.model';
 import { User } from '../user/user.model';
 import { PaymentMethodService } from '../payment-method/payment-method.service';
+import { Issue } from '../issue/issue.model';
+import { buildOrderDetails } from './order.presenter';
 
 const generateOrderNumber = () => {
   const random = Math.floor(100 + Math.random() * 900);
@@ -38,6 +40,7 @@ const checkoutOrder = async (
   productId: string,
   buyerId: string,
   deliveryDetails: IDeliveryDetails,
+  note?: string,
 ) => {
   const product = await Product.findById(productId);
   if (!product) {
@@ -105,6 +108,7 @@ const checkoutOrder = async (
     price: product.price,
     platformFee,
     sellerPayout,
+    note: note?.trim(),
     deliveryDetails,
     payment: {
       provider: 'stripe',
@@ -279,8 +283,8 @@ const getMyOrders = async (
 const getOrderById = async (orderId: string, user: JwtPayload) => {
   const order = await Order.findById(orderId)
     .populate('product')
-    .populate('buyer', 'name email contact location')
-    .populate('seller', 'name email contact location');
+    .populate('buyer', 'name email phone contact location country image avatar')
+    .populate('seller', 'name email phone contact location country image avatar');
 
   if (!order) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Order not found');
@@ -288,9 +292,10 @@ const getOrderById = async (orderId: string, user: JwtPayload) => {
 
   const isAdmin =
     user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.SUPER_ADMIN;
+  const buyerId = order.buyer?._id?.toString() ?? order.buyer?.toString();
+  const sellerId = order.seller?._id?.toString() ?? order.seller?.toString();
   const isParty =
-    order.buyer._id?.toString() === user.id ||
-    order.seller._id?.toString() === user.id;
+    buyerId === user.id || sellerId === user.id;
 
   if (!isAdmin && !isParty) {
     throw new ApiError(
@@ -299,7 +304,105 @@ const getOrderById = async (orderId: string, user: JwtPayload) => {
     );
   }
 
-  return order;
+  const productId =
+    order.product?._id?.toString() ?? order.product?.toString() ?? null;
+  const latestIssue = productId
+    ? await Issue.findOne({ product: productId })
+        .sort({ createdAt: -1 })
+        .lean()
+    : null;
+
+  return buildOrderDetails({
+    order,
+    openIssue: latestIssue,
+    viewer: { id: user.id, role: user.role },
+    currency: config.stripe.currency.toUpperCase(),
+  });
+};
+
+type IOrderSchedulePayload = {
+  pickupWindow?: { start: string; end: string };
+  estimatedDeliveryAt?: string;
+  note?: string;
+};
+
+const updateOrderSchedule = async (
+  orderId: string,
+  payload: IOrderSchedulePayload,
+  user: JwtPayload,
+) => {
+  if (
+    user.role !== USER_ROLES.ADMIN &&
+    user.role !== USER_ROLES.SUPER_ADMIN
+  ) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'Admin access is required');
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Order not found');
+  }
+  if (
+    order.status === ORDER_STATUS.CANCELLED ||
+    order.status === ORDER_STATUS.REFUNDED ||
+    order.status === ORDER_STATUS.COMPLETED
+  ) {
+    throw new ApiError(
+      StatusCodes.CONFLICT,
+      'A terminal order schedule cannot be changed',
+    );
+  }
+
+  const pickupWindow = payload.pickupWindow
+    ? {
+        start: new Date(payload.pickupWindow.start),
+        end: new Date(payload.pickupWindow.end),
+      }
+    : undefined;
+  const estimatedDeliveryAt = payload.estimatedDeliveryAt
+    ? new Date(payload.estimatedDeliveryAt)
+    : undefined;
+
+  if (
+    pickupWindow &&
+    (!Number.isFinite(pickupWindow.start.getTime()) ||
+      !Number.isFinite(pickupWindow.end.getTime()) ||
+      pickupWindow.end <= pickupWindow.start)
+  ) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid pickup window');
+  }
+  if (
+    estimatedDeliveryAt &&
+    !Number.isFinite(estimatedDeliveryAt.getTime())
+  ) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'Invalid estimated delivery date',
+    );
+  }
+
+  const pickupEnd = pickupWindow?.end ?? order.pickupWindow?.end;
+  const deliveryAt = estimatedDeliveryAt ?? order.estimatedDeliveryAt;
+  if (
+    deliveryAt &&
+    pickupEnd &&
+    deliveryAt < pickupEnd
+  ) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'Estimated delivery must be after the pickup window',
+    );
+  }
+
+  await Order.findByIdAndUpdate(orderId, {
+    $set: {
+      ...(pickupWindow ? { pickupWindow } : {}),
+      ...(estimatedDeliveryAt ? { estimatedDeliveryAt } : {}),
+      ...(payload.note !== undefined ? { note: payload.note.trim() } : {}),
+    },
+  });
+
+  return getOrderById(orderId, user);
 };
 
 const getAllOrdersForAdmin = async (query: Record<string, unknown>) => {
@@ -562,6 +665,7 @@ export const OrderService = {
   handlePaymentFailed,
   getMyOrders,
   getOrderById,
+  updateOrderSchedule,
   getAllOrdersForAdmin,
   updateOrderStatus,
   markPayoutPaid,

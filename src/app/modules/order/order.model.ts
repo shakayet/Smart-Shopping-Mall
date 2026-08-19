@@ -11,6 +11,12 @@ const orderSchema = new Schema<IOrder>(
     price: { type: Number, required: true },
     platformFee: { type: Number, required: true },
     sellerPayout: { type: Number, required: true },
+    note: { type: String, maxlength: 1000 },
+    pickupWindow: {
+      start: { type: Date },
+      end: { type: Date },
+    },
+    estimatedDeliveryAt: { type: Date },
     deliveryDetails: {
       address: { type: String, required: true },
       location: { type: String, required: true },

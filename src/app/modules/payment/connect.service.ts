@@ -7,7 +7,43 @@ import {
   createConnectedAccountLink,
   retrieveConnectedAccount,
 } from '../../../integrations/stripe';
+import { errorLogger } from '../../../shared/logger';
 import { User } from '../user/user.model';
+
+type IStripeErrorDetails = {
+  code?: unknown;
+  message?: unknown;
+  requestId?: unknown;
+  statusCode?: unknown;
+  type?: unknown;
+};
+
+const throwConnectProviderError = (
+  operation: string,
+  error: unknown,
+): never => {
+  const details = error as IStripeErrorDetails;
+  const diagnostic = [
+    `operation=${operation}`,
+    typeof details?.type === 'string' ? `type=${details.type}` : '',
+    typeof details?.code === 'string' ? `code=${details.code}` : '',
+    typeof details?.statusCode === 'number'
+      ? `status=${details.statusCode}`
+      : '',
+    typeof details?.requestId === 'string'
+      ? `requestId=${details.requestId}`
+      : '',
+    typeof details?.message === 'string' ? `message=${details.message}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  errorLogger.error(`[STRIPE_CONNECT] ${diagnostic}`);
+  throw new ApiError(
+    StatusCodes.SERVICE_UNAVAILABLE,
+    'Seller payout onboarding is currently unavailable',
+  );
+};
 
 const stateSignature = (payload: string) =>
   crypto
@@ -47,8 +83,18 @@ const readState = (state: string) => {
 };
 
 const accountStatus = async (userId: string) => {
-  const user = await User.findById(userId).select('+stripeAccountId');
-  if (!user?.stripeAccountId) {
+  const user = await User.findOne({
+    _id: userId,
+    status: 'active',
+    verified: true,
+  }).select('+stripeAccountId');
+  if (!user) {
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      'Account is not eligible for seller payouts',
+    );
+  }
+  if (!user.stripeAccountId) {
     return {
       connected: false,
       detailsSubmitted: false,
@@ -56,7 +102,12 @@ const accountStatus = async (userId: string) => {
       chargesEnabled: false,
     };
   }
-  const account = await retrieveConnectedAccount(user.stripeAccountId);
+  let account: Awaited<ReturnType<typeof retrieveConnectedAccount>>;
+  try {
+    account = await retrieveConnectedAccount(user.stripeAccountId);
+  } catch (error) {
+    return throwConnectProviderError('retrieve account', error);
+  }
   return {
     connected: true,
     detailsSubmitted: account.details_submitted,
@@ -77,22 +128,71 @@ const assertPayoutReady = async (userId: string) => {
 };
 
 const onboardingLink = async (userId: string) => {
-  const user = await User.findById(userId).select('+stripeAccountId');
-  if (!user) throw new ApiError(StatusCodes.NOT_FOUND, 'User not found');
+  const user = await User.findOne({
+    _id: userId,
+    status: 'active',
+    verified: true,
+  }).select('+stripeAccountId');
+  if (!user) {
+    throw new ApiError(
+      StatusCodes.FORBIDDEN,
+      'Account is not eligible for seller payouts',
+    );
+  }
 
-  if (!user.stripeAccountId) {
-    const account = await createConnectedAccount(user.email);
-    user.stripeAccountId = account.id;
-    await user.save();
+  let accountId = user.stripeAccountId;
+
+  if (!accountId) {
+    let account: Awaited<ReturnType<typeof createConnectedAccount>>;
+    try {
+      account = await createConnectedAccount(userId, user.email);
+    } catch (error) {
+      return throwConnectProviderError('create account', error);
+    }
+    const updatedUser = await User.findOneAndUpdate(
+      {
+        _id: userId,
+        status: 'active',
+        verified: true,
+        $or: [
+          { stripeAccountId: { $exists: false } },
+          { stripeAccountId: null },
+        ],
+      },
+      { $set: { stripeAccountId: account.id } },
+      { new: true },
+    ).select('+stripeAccountId');
+
+    accountId = updatedUser?.stripeAccountId;
+    if (!accountId) {
+      const currentUser = await User.findOne({
+        _id: userId,
+        status: 'active',
+        verified: true,
+      }).select('+stripeAccountId');
+      accountId = currentUser?.stripeAccountId;
+    }
+
+    if (!accountId) {
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'Unable to initialize seller payout account',
+      );
+    }
   }
 
   const state = createState(userId);
   const base = `${config.stripe.publicUrl}/api/v1/payment/connect`;
-  const link = await createConnectedAccountLink(
-    user.stripeAccountId,
-    `${base}/return?state=${encodeURIComponent(state)}`,
-    `${base}/refresh?state=${encodeURIComponent(state)}`,
-  );
+  let link: Awaited<ReturnType<typeof createConnectedAccountLink>>;
+  try {
+    link = await createConnectedAccountLink(
+      accountId,
+      `${base}/return?state=${encodeURIComponent(state)}`,
+      `${base}/refresh?state=${encodeURIComponent(state)}`,
+    );
+  } catch (error) {
+    return throwConnectProviderError('create account link', error);
+  }
   return { url: link.url, expiresAt: link.expires_at };
 };
 

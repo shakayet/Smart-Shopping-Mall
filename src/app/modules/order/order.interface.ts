@@ -7,6 +7,11 @@ export type IDeliveryDetails = {
   phone: string;
 }
 
+export type IPickupWindow = {
+  start: Date;
+  end: Date;
+};
+
 export type IOrderStatusHistory = {
   status: ORDER_STATUS;
   note?: string;
@@ -28,6 +33,9 @@ export type IOrder = {
   price: number;
   platformFee: number;
   sellerPayout: number;
+  note?: string;
+  pickupWindow?: IPickupWindow;
+  estimatedDeliveryAt?: Date;
   deliveryDetails: IDeliveryDetails;
   payment: IOrderPayment;
   payoutStatus: PAYOUT_STATUS;

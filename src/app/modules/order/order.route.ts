@@ -22,6 +22,13 @@ router.patch(
 );
 
 router.patch(
+  '/:id/schedule',
+  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
+  validateRequest(OrderValidation.updateOrderScheduleZodSchema),
+  OrderController.updateOrderSchedule,
+);
+
+router.patch(
   '/:id/payout',
   auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
   OrderController.markPayoutPaid,

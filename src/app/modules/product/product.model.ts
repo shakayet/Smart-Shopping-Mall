@@ -16,6 +16,8 @@ const productSchema = new Schema<IProduct>(
     image: { type: String },
     brand: { type: String, required: true },
     description: { type: String, required: true },
+    material: { type: String },
+    features: { type: [String], default: [] },
     price: { type: Number, required: true },
     condition: { type: String, required: true },
     originalPackagingAvailable: { type: Boolean, required: true },

@@ -49,7 +49,9 @@ const getUserProfile = catchAsync(async (req: Request, res: Response) => {
 
 const getProfileStats = catchAsync(async (req: Request, res: Response) => {
   const user = req.user as any;
-  const result = await UserService.getProfileStatsFromDB(user.id);
+  const result = await UserService.getProfileStatsFromDB(
+    req.params.userId || user.id,
+  );
 
   sendResponse(res, {
     success: true,

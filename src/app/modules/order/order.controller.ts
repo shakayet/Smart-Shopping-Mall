@@ -7,12 +7,13 @@ import { OrderService } from './order.service';
 
 const checkoutOrder = catchAsync(async (req: Request, res: Response) => {
   const user = req.user as any;
-  const { deliveryDetails } = req.body;
+  const { deliveryDetails, note } = req.body;
 
   const result = await OrderService.checkoutOrder(
     req.params.productId,
     user.id,
     deliveryDetails,
+    note,
   );
 
   sendResponse(res, {
@@ -76,6 +77,22 @@ const updateOrderStatus = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const updateOrderSchedule = catchAsync(async (req: Request, res: Response) => {
+  const user = req.user as any;
+  const result = await OrderService.updateOrderSchedule(
+    req.params.id,
+    req.body,
+    user,
+  );
+
+  sendResponse(res, {
+    success: true,
+    statusCode: StatusCodes.OK,
+    message: 'Order schedule updated successfully',
+    data: result,
+  });
+});
+
 const markPayoutPaid = catchAsync(async (req: Request, res: Response) => {
   const result = await OrderService.markPayoutPaid(req.params.id);
 
@@ -105,6 +122,7 @@ export const OrderController = {
   getOrderDetails,
   getAllOrdersForAdmin,
   updateOrderStatus,
+  updateOrderSchedule,
   markPayoutPaid,
   cancelOrder,
 };

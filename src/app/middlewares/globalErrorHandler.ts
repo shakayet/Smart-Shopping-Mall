@@ -9,11 +9,13 @@ import { IErrorMessage } from '../../types/errors.types';
 
 const globalErrorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   void _next;
-  if (config.node_env === 'development') {
-    errorLogger.info('🚨 globalErrorHandler ~~ ', error);
-  } else {
-    errorLogger.error('🚨 globalErrorHandler ~~ ', error);
-  }
+  const errorName =
+    typeof error?.name === 'string' ? error.name : 'UnknownError';
+  const errorMessage =
+    typeof error?.message === 'string' ? error.message : 'Unknown error';
+  errorLogger.error(
+    `[GLOBAL_ERROR] ${req.method} ${req.originalUrl} ${errorName}: ${errorMessage}`,
+  );
 
   let statusCode = 500;
   let message = 'Something went wrong';

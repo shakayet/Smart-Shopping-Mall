@@ -8,6 +8,7 @@ const checkoutZodSchema = z.object({
       location: z.string({ required_error: 'Location is required' }),
       phone: z.string({ required_error: 'Phone number is required' }),
     }),
+    note: z.string().trim().max(1000).optional(),
   }),
 });
 
@@ -20,7 +21,36 @@ const updateOrderStatusZodSchema = z.object({
   }),
 });
 
+const updateOrderScheduleZodSchema = z.object({
+  body: z
+    .object({
+      pickupWindow: z
+        .object({
+          start: z.string().datetime(),
+          end: z.string().datetime(),
+        })
+        .refine(
+          value => new Date(value.end).getTime() > new Date(value.start).getTime(),
+          {
+            message: 'Pickup window end must be after its start',
+            path: ['end'],
+          },
+        )
+        .optional(),
+      estimatedDeliveryAt: z.string().datetime().optional(),
+      note: z.string().trim().max(1000).optional(),
+    })
+    .refine(
+      value =>
+        value.pickupWindow !== undefined ||
+        value.estimatedDeliveryAt !== undefined ||
+        value.note !== undefined,
+      { message: 'Provide a pickup window, estimated delivery, or note' },
+    ),
+});
+
 export const OrderValidation = {
   checkoutZodSchema,
   updateOrderStatusZodSchema,
+  updateOrderScheduleZodSchema,
 };

@@ -20,5 +20,6 @@ const issueSchema = new Schema<IIssue>(
 );
 
 issueSchema.index({ product: 1, resolved: 1 });
+issueSchema.index({ product: 1, createdAt: -1 });
 
 export const Issue = model<IIssue>('Issue', issueSchema);

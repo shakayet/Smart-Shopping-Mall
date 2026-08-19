@@ -167,9 +167,14 @@ userSchema.statics.isMatchHashedOtp = async (
 };
 
 userSchema.pre('save', async function (next) {
-  const isExist = await User.findOne({ email: this.email });
-  if (isExist) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Email already exist!');
+  if (this.isNew || this.isModified('email')) {
+    const isExist = await User.exists({
+      email: this.email,
+      _id: { $ne: this._id },
+    });
+    if (isExist) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'Email already exist!');
+    }
   }
 
   if (this.password && this.isModified('password')) {

@@ -85,14 +85,21 @@ export const retrieveCustomerPaymentMethod = async (
 export const detachPaymentMethod = async (paymentMethodId: string) =>
   stripeClient.paymentMethods.detach(paymentMethodId);
 
-export const createConnectedAccount = async (email: string) =>
-  stripeClient.accounts.create({
-    type: 'express',
-    country: config.stripe.connectCountry,
-    email,
-    capabilities: { transfers: { requested: true } },
-    business_type: 'individual',
-  });
+export const createConnectedAccount = async (
+  userId: string,
+  email: string,
+) =>
+  stripeClient.accounts.create(
+    {
+      type: 'express',
+      country: config.stripe.connectCountry,
+      email,
+      capabilities: { transfers: { requested: true } },
+      business_type: 'individual',
+      metadata: { appUserId: userId },
+    },
+    { idempotencyKey: `stripe-connect-account:${userId}` },
+  );
 
 export const createConnectedAccountLink = async (
   accountId: string,

@@ -2,6 +2,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import { USER_ROLES } from '../../../enums/user';
 import auth from '../../middlewares/auth';
 import fileUploadHandler from '../../middlewares/fileUploadHandler';
+import validateRequest from '../../middlewares/validateRequest';
 import { UserController } from './user.controller';
 import { UserValidation } from './user.validation';
 const router = express.Router();
@@ -9,6 +10,12 @@ const router = express.Router();
 router.get(
   '/profile/stats',
   auth(USER_ROLES.USER),
+  UserController.getProfileStats,
+);
+router.get(
+  '/profile/stats/:userId',
+  auth(USER_ROLES.USER),
+  validateRequest(UserValidation.profileStatsParamsZodSchema),
   UserController.getProfileStats,
 );
 

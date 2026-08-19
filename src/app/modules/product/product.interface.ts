@@ -10,6 +10,8 @@ export interface IProduct {
   image?: string;
   brand: string;
   description: string;
+  material?: string;
+  features?: string[];
   price: number;
   condition: string;
   originalPackagingAvailable: boolean;

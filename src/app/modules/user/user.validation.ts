@@ -23,7 +23,14 @@ const updateUserZodSchema = z.object({
   country: z.string().trim().max(100).optional(),
 });
 
+const profileStatsParamsZodSchema = z.object({
+  params: z.object({
+    userId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid user ID'),
+  }),
+});
+
 export const UserValidation = {
   createUserZodSchema,
   updateUserZodSchema,
+  profileStatsParamsZodSchema,
 };

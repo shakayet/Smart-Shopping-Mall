@@ -124,14 +124,8 @@ const getUserProfileFromDB = async (user: JwtPayload) => {
 
 const getProfileStatsFromDB = async (userId: string) => {
   const user = await User.findById(userId).select('status verified').lean();
-  if (!user) {
-    throw new ApiError(StatusCodes.UNAUTHORIZED, 'User account not found');
-  }
-  if (user.status !== 'active' || !user.verified) {
-    throw new ApiError(
-      StatusCodes.FORBIDDEN,
-      'Your account cannot access profile statistics',
-    );
+  if (!user || user.status !== 'active' || !user.verified) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'User profile not found');
   }
 
   const [totalProductsListed, totalProductsPurchased, earnings] =
