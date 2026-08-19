@@ -2,7 +2,17 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
 
-dotenv.config({ path: path.join(process.cwd(), '.env') });
+const environmentPath = path.join(process.cwd(), '.env');
+const environmentResult = dotenv.config({
+  path: environmentPath,
+  // Local development must use the selected workspace .env file even when
+  // the parent terminal has stale variables. Production keeps injected secrets.
+  override: process.env.NODE_ENV !== 'production',
+});
+
+if (environmentResult.error && process.env.NODE_ENV !== 'production') {
+  throw new Error(`Unable to load environment file: ${environmentPath}`);
+}
 
 const optionalUrl = z.string().url().optional();
 const envSchema = z

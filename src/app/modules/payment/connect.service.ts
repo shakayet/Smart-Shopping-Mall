@@ -23,6 +23,7 @@ const throwConnectProviderError = (
   error: unknown,
 ): never => {
   const details = error as IStripeErrorDetails;
+
   const diagnostic = [
     `operation=${operation}`,
     typeof details?.type === 'string' ? `type=${details.type}` : '',

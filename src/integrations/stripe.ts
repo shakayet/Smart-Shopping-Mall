@@ -95,10 +95,11 @@ export const createConnectedAccount = async (
       country: config.stripe.connectCountry,
       email,
       capabilities: { transfers: { requested: true } },
-      business_type: 'individual',
       metadata: { appUserId: userId },
     },
-    { idempotencyKey: `stripe-connect-account:${userId}` },
+    // Bump the version whenever the connected-account creation parameters
+    // change so Stripe never replays an older request shape for this user.
+    { idempotencyKey: `stripe-connect-account:v2:${userId}` },
   );
 
 export const createConnectedAccountLink = async (
