@@ -8,6 +8,10 @@ import { uploadToS3, deleteFromS3 } from '../../../helpers/s3Helper';
 import { cache } from '../../../helpers/cache';
 import fs from 'fs';
 import { ConnectService } from '../payment/connect.service';
+import {
+  buildProductFeedCacheDiscriminator,
+  buildProductFeedViewerFilter,
+} from './product-feed.util';
 
 export const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
@@ -103,7 +107,10 @@ const toPublicProduct = (product: any) => {
   return value;
 };
 
-const getAllProductsFromDB = async (query: Record<string, unknown>) => {
+const getAllProductsFromDB = async (
+  query: Record<string, unknown>,
+  viewerId?: string,
+) => {
   // Only show items still available for sale unless a specific status is requested
   const queryWithDefaults = { status: 'available', ...query };
 
@@ -113,13 +120,20 @@ const getAllProductsFromDB = async (query: Record<string, unknown>) => {
   };
 
   const cacheKey =
-    PRODUCT_LIST_CACHE_PREFIX + JSON.stringify(queryWithDefaults);
+    PRODUCT_LIST_CACHE_PREFIX +
+    buildProductFeedCacheDiscriminator(queryWithDefaults, viewerId);
   const cached = cache.get<ProductListResponse>(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const productQuery = new QueryBuilder(Product.find(), queryWithDefaults)
+  // Keep the exclusion in a separate $and clause so a caller-provided seller
+  // filter cannot overwrite it through QueryBuilder.filter().
+  const viewerFilter = buildProductFeedViewerFilter(viewerId);
+  const productQuery = new QueryBuilder(
+    Product.find(viewerFilter),
+    queryWithDefaults,
+  )
     .search(['name', 'brand', 'description'])
     .filter()
     .sort()

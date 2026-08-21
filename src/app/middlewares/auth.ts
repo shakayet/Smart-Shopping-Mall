@@ -5,6 +5,33 @@ import config from '../../config';
 import ApiError from '../../errors/ApiError';
 import { jwtHelper } from '../../helpers/jwtHelper';
 
+export const optionalAuth = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const authorization = req.headers.authorization;
+    if (!authorization) {
+      next();
+      return;
+    }
+
+    const [scheme, token, ...extraParts] = authorization.trim().split(/\s+/);
+    if (scheme !== 'Bearer' || !token || extraParts.length > 0) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, 'You are not authorized');
+    }
+
+    req.user = jwtHelper.verifyToken(
+      token,
+      config.jwt.jwt_secret as Secret,
+    );
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
 const auth =
   (...roles: string[]) =>
   async (req: Request, res: Response, next: NextFunction) => {

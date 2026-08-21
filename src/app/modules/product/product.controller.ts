@@ -23,7 +23,13 @@ const createProduct = catchAsync(async (req: Request, res: Response) => {
 });
 
 const getAllProducts = catchAsync(async (req: Request, res: Response) => {
-  const result = await ProductService.getAllProductsFromDB(req.query);
+  const user = req.user as { id?: unknown } | undefined;
+  const viewerId =
+    typeof user?.id === 'string' ? user.id : undefined;
+  const result = await ProductService.getAllProductsFromDB(
+    req.query,
+    viewerId,
+  );
 
   sendResponse(res, {
     success: true,

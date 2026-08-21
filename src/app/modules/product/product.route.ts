@@ -1,6 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { USER_ROLES } from '../../../enums/user';
-import auth from '../../middlewares/auth';
+import auth, { optionalAuth } from '../../middlewares/auth';
 import fileUploadHandler from '../../middlewares/fileUploadHandler';
 import validateRequest from '../../middlewares/validateRequest';
 import { ProductController } from './product.controller';
@@ -17,7 +17,7 @@ router.get(
 
 router
   .route('/')
-  .get(ProductController.getAllProducts)
+  .get(optionalAuth, ProductController.getAllProducts)
   .post(
     auth(USER_ROLES.USER, USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
     fileUploadHandler(),
