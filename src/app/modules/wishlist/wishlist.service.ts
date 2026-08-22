@@ -2,6 +2,7 @@ import { StatusCodes } from 'http-status-codes';
 import ApiError from '../../../errors/ApiError';
 import { Product } from '../product/product.model';
 import { Wishlist } from './wishlist.model';
+import { NotificationEvent } from '../notification/notification.event';
 
 const addToWishlist = async (userId: string, productId: string) => {
   const product = await Product.findById(productId);
@@ -15,6 +16,12 @@ const addToWishlist = async (userId: string, productId: string) => {
   }
 
   const result = await Wishlist.create({ user: userId, product: productId });
+  void NotificationEvent.wishlistItemSaved(
+    userId,
+    result._id.toString(),
+    productId,
+    product.name,
+  );
   return result;
 };
 

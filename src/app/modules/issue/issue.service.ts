@@ -21,6 +21,8 @@ import { deleteFromS3 } from '../../../helpers/s3Helper';
 import { cache } from '../../../helpers/cache';
 import { PRODUCT_LIST_CACHE_PREFIX } from '../product/product.service';
 import { Types } from 'mongoose';
+import { NotificationEvent } from '../notification/notification.event';
+import { Wishlist } from '../wishlist/wishlist.model';
 
 const createIssue = async (
   productId: string,
@@ -79,6 +81,7 @@ const createIssue = async (
       changedBy: new Types.ObjectId(adminId),
     });
     await order.save();
+    void NotificationEvent.orderStatusChanged(order, ORDER_STATUS.REFUNDED);
   }
 
   // Create issue
@@ -90,6 +93,9 @@ const createIssue = async (
     reason,
     admin: adminId,
   });
+  if (order) {
+    void NotificationEvent.issueCreated(issue._id.toString(), order);
+  }
 
   // Notify seller
   const seller = await User.findById(product.seller);
@@ -126,6 +132,10 @@ const resolveIssue = async (
   }
 
   const seller = await User.findById(product.seller);
+  const order = await Order.findOne({ product: product._id }).sort({
+    createdAt: -1,
+  });
+  const watcherIds = await Wishlist.distinct('user', { product: product._id });
 
   if (action === 'delete') {
     // Delete files from S3
@@ -141,6 +151,16 @@ const resolveIssue = async (
 
     // Delete product from DB
     await Product.findByIdAndDelete(product._id);
+    await Wishlist.deleteMany({ product: product._id });
+    void Promise.all(
+      watcherIds.map(watcherId =>
+        NotificationEvent.wishlistItemUnavailable(
+          watcherId.toString(),
+          product._id.toString(),
+          product.name,
+        ),
+      ),
+    );
 
     // Notify seller
     if (seller && seller.email) {
@@ -157,6 +177,11 @@ const resolveIssue = async (
       status: 'available',
       buyer: undefined,
     });
+    void NotificationEvent.wishlistAvailabilityChanged(
+      product._id.toString(),
+      true,
+      `issue:${issue._id.toString()}:resolved`,
+    );
 
     // Notify seller
     if (seller && seller.email) {
@@ -172,6 +197,9 @@ const resolveIssue = async (
   // Mark issue as resolved
   issue.resolved = true;
   await issue.save();
+  if (order) {
+    void NotificationEvent.issueResolved(issue._id.toString(), order);
+  }
 
   // Clear product cache
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);

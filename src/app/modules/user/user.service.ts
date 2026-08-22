@@ -17,6 +17,7 @@ import { IUser } from './user.interface';
 import { User } from './user.model';
 import { Order } from '../order/order.model';
 import { Product } from '../product/product.model';
+import { NotificationService } from '../notification/notification.service';
 
 const getAllUsersToDB = async (query: Record<string, unknown>) => {
   const userQuery = new QueryBuilder(User.find(), query)
@@ -198,6 +199,7 @@ const deleteAccountFromDB = async (user: JwtPayload) => {
   }
 
   const deleteDoc = await User.findByIdAndDelete(id);
+  await NotificationService.deleteUserNotificationData(id);
   return deleteDoc;
 };
 

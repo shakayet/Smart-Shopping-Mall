@@ -1,0 +1,184 @@
+# Notification integration guide
+
+## Backend URLs
+
+Use the API base URL followed by `/api/v1`. Socket.IO connects to the API
+origin without `/api/v1`.
+
+Every request below requires:
+
+```http
+Authorization: Bearer <user-access-token>
+Content-Type: application/json
+```
+
+## REST API
+
+### List notifications
+
+```http
+GET /api/v1/notifications?page=1&limit=20&unread=true
+```
+
+`unread` is optional. Omit it for all notifications, use `true` for unread,
+or `false` for read notifications.
+
+```json
+{
+  "success": true,
+  "message": "Notifications retrieved successfully",
+  "pagination": {
+    "total": 1,
+    "limit": 20,
+    "page": 1,
+    "totalPage": 1
+  },
+  "data": [
+    {
+      "id": "notification-id",
+      "type": "order_secured",
+      "title": "Order secured",
+      "body": "Your order CLT-123 has been secured.",
+      "data": {
+        "screen": "order_details",
+        "orderId": "order-id",
+        "orderNumber": "CLT-123",
+        "productId": "product-id"
+      },
+      "isRead": false,
+      "readAt": null,
+      "createdAt": "2026-08-22T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Unread badge count
+
+```http
+GET /api/v1/notifications/unread-count
+```
+
+### Mark one notification as read
+
+```http
+PATCH /api/v1/notifications/:id/read
+```
+
+### Mark all notifications as read
+
+```http
+PATCH /api/v1/notifications/read-all
+```
+
+### Delete one notification
+
+```http
+DELETE /api/v1/notifications/:id
+```
+
+### Delete all notifications
+
+```http
+DELETE /api/v1/notifications/all
+```
+
+### Register or refresh a device
+
+Call this after login, during application startup, and whenever Firebase
+rotates the registration token.
+
+```http
+POST /api/v1/notifications/devices
+
+{
+  "registrationToken": "<firebase-messaging-token>",
+  "platform": "android",
+  "deviceId": "<stable-app-installation-id>"
+}
+```
+
+`platform` must be `android`, `ios`, or `web`. Re-registering the same token
+updates its owner and freshness timestamp without creating duplicates.
+
+### Unregister a device
+
+Call this before logout using the token that was registered for the current
+account.
+
+```http
+DELETE /api/v1/notifications/devices
+
+{
+  "registrationToken": "<firebase-messaging-token>"
+}
+```
+
+## Real-time in-app notification
+
+Connect Socket.IO to the API origin. The backend verifies the JWT, verifies
+that the user is still active, and assigns the socket to its user room. The
+client must never submit a user ID or room ID.
+
+```dart
+final socket = io(
+  apiOrigin,
+  OptionBuilder()
+      .setTransports(['websocket'])
+      .setAuth({'token': accessToken})
+      .enableAutoConnect()
+      .enableReconnection()
+      .build(),
+);
+
+socket.on('notification:new', (payload) {
+  // Insert at the top of the notification list and increment unread count.
+});
+```
+
+Reconnect with a fresh JWT after an access-token refresh. Disconnect the
+socket during logout.
+
+## Firebase Messaging in Flutter
+
+Install and configure `firebase_core` and `firebase_messaging`. For foreground
+display, create an Android notification channel named `closete_updates` using
+`flutter_local_notifications`; the backend push payload targets this channel.
+
+Application startup flow:
+
+1. Initialize Firebase.
+2. Request notification permission, including provisional/alert/badge/sound
+   options on iOS as appropriate.
+3. Obtain `FirebaseMessaging.instance.getToken()`.
+4. Register it through `POST /notifications/devices`.
+5. Listen to `FirebaseMessaging.instance.onTokenRefresh` and register every
+   replacement token.
+6. Handle `FirebaseMessaging.onMessage` for foreground display.
+7. Handle `FirebaseMessaging.onMessageOpenedApp` and
+   `getInitialMessage()` for navigation from background/terminated states.
+8. Unregister the current token before logout.
+
+Use the push `data.screen` value for navigation:
+
+- `order_details`: open the order using `data.orderId`.
+- `product_details`: open the product using `data.productId`.
+- `wishlist`: open saved items.
+- `seller_onboarding`: open Stripe seller onboarding.
+
+Do not place FCM registration tokens in logs, analytics, crash reports, URLs,
+or local plaintext debug output.
+
+## Firebase backend environment
+
+Create a Firebase service account and configure:
+
+```env
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk@example.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Push delivery is intentionally disabled when these variables are empty.
+Persistent in-app notifications and authenticated Socket.IO delivery continue
+to work without Firebase credentials.

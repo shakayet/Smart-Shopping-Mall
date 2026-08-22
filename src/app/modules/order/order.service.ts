@@ -30,6 +30,7 @@ import { User } from '../user/user.model';
 import { PaymentMethodService } from '../payment-method/payment-method.service';
 import { Issue } from '../issue/issue.model';
 import { buildOrderDetails } from './order.presenter';
+import { NotificationEvent } from '../notification/notification.event';
 
 const generateOrderNumber = () => {
   const random = Math.floor(100 + Math.random() * 900);
@@ -196,6 +197,15 @@ const handlePaymentSucceeded = async (payment: SuccessfulPayment) => {
         $unset: { buyer: 1, reservationExpiresAt: 1 },
       },
     );
+    void NotificationEvent.orderStatusChanged(
+      expectedOrder,
+      ORDER_STATUS.REFUNDED,
+    );
+    void NotificationEvent.wishlistAvailabilityChanged(
+      expectedOrder.product.toString(),
+      true,
+      `${expectedOrder._id.toString()}:invalid-payment`,
+    );
     return;
   }
 
@@ -229,6 +239,32 @@ const handlePaymentSucceeded = async (payment: SuccessfulPayment) => {
         paymentIntentId,
         `late-payment-refund:${staleOrder._id.toString()}`,
       );
+      const refundedOrder = await Order.findOneAndUpdate(
+        {
+          _id: staleOrder._id,
+          status: { $in: [ORDER_STATUS.CANCELLED, ORDER_STATUS.REFUNDED] },
+        },
+        {
+          $set: {
+            'payment.status': PAYMENT_STATUS.REFUNDED,
+            status: ORDER_STATUS.REFUNDED,
+          },
+          $push: {
+            statusHistory: {
+              status: ORDER_STATUS.REFUNDED,
+              note: 'Late payment was automatically refunded',
+              changedAt: new Date(),
+            },
+          },
+        },
+        { new: true },
+      );
+      if (refundedOrder) {
+        void NotificationEvent.orderStatusChanged(
+          refundedOrder,
+          ORDER_STATUS.REFUNDED,
+        );
+      }
     }
     return;
   }
@@ -237,6 +273,13 @@ const handlePaymentSucceeded = async (payment: SuccessfulPayment) => {
     $set: { status: 'secured', buyer: order.buyer },
     $unset: { reservationExpiresAt: 1 },
   });
+  void NotificationEvent.paymentSucceeded(order);
+  void NotificationEvent.wishlistAvailabilityChanged(
+    order.product.toString(),
+    false,
+    order._id.toString(),
+    [order.buyer.toString(), order.seller.toString()],
+  );
 };
 
 const handlePaymentFailed = async (paymentIntentId: string) => {
@@ -256,6 +299,7 @@ const handlePaymentFailed = async (paymentIntentId: string) => {
       $unset: { buyer: 1, reservationExpiresAt: 1 },
     },
   );
+  void NotificationEvent.paymentFailed(order);
 };
 
 const getMyOrders = async (
@@ -394,13 +438,23 @@ const updateOrderSchedule = async (
     );
   }
 
-  await Order.findByIdAndUpdate(orderId, {
-    $set: {
-      ...(pickupWindow ? { pickupWindow } : {}),
-      ...(estimatedDeliveryAt ? { estimatedDeliveryAt } : {}),
-      ...(payload.note !== undefined ? { note: payload.note.trim() } : {}),
+  const updatedOrder = await Order.findByIdAndUpdate(
+    orderId,
+    {
+      $set: {
+        ...(pickupWindow ? { pickupWindow } : {}),
+        ...(estimatedDeliveryAt ? { estimatedDeliveryAt } : {}),
+        ...(payload.note !== undefined ? { note: payload.note.trim() } : {}),
+      },
     },
-  });
+    { new: true },
+  );
+  if (updatedOrder) {
+    void NotificationEvent.orderScheduleUpdated(
+      updatedOrder,
+      (updatedOrder.get('updatedAt') as Date).getTime().toString(),
+    );
+  }
 
   return getOrderById(orderId, user);
 };
@@ -476,6 +530,17 @@ const updateOrderStatus = async (
   } as any);
 
   await order.save();
+  void NotificationEvent.orderStatusChanged(order, targetStatus);
+  if (
+    targetStatus === ORDER_STATUS.CANCELLED ||
+    targetStatus === ORDER_STATUS.REFUNDED
+  ) {
+    void NotificationEvent.wishlistAvailabilityChanged(
+      order.product.toString(),
+      true,
+      `${order._id.toString()}:${targetStatus}`,
+    );
+  }
   return order;
 };
 
@@ -521,6 +586,7 @@ const paySeller = async (order: InstanceType<typeof Order>) => {
     order.payoutTransferId = transfer.id;
     order.payoutStatus = PAYOUT_STATUS.PAID;
     await order.save();
+    void NotificationEvent.payoutPaid(order);
     return order;
   } catch (error) {
     order.payoutStatus = PAYOUT_STATUS.FAILED;
@@ -598,6 +664,15 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
         $unset: { buyer: 1, reservationExpiresAt: 1 },
       },
     );
+    void NotificationEvent.orderStatusChanged(
+      cancelled,
+      ORDER_STATUS.CANCELLED,
+    );
+    void NotificationEvent.wishlistAvailabilityChanged(
+      cancelled.product.toString(),
+      true,
+      `${cancelled._id.toString()}:cancelled`,
+    );
     return cancelled;
   }
 
@@ -620,6 +695,13 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
     status: 'available',
     buyer: undefined,
   });
+
+  void NotificationEvent.orderStatusChanged(order, ORDER_STATUS.CANCELLED);
+  void NotificationEvent.wishlistAvailabilityChanged(
+    order.product.toString(),
+    true,
+    `${order._id.toString()}:cancelled`,
+  );
 
   return order;
 };
@@ -655,6 +737,12 @@ const expirePendingOrders = async () => {
         $set: { status: 'available' },
         $unset: { buyer: 1, reservationExpiresAt: 1 },
       },
+    );
+    void NotificationEvent.orderStatusChanged(order, ORDER_STATUS.CANCELLED);
+    void NotificationEvent.wishlistAvailabilityChanged(
+      order.product.toString(),
+      true,
+      `${order._id.toString()}:expired`,
     );
   }
 };

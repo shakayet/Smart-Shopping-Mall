@@ -51,6 +51,9 @@ const envSchema = z
     WEBHOOK_SECRET: z.string().min(1),
     STRIPE_CURRENCY: z.string().length(3).default('aed'),
     API_PUBLIC_URL: z.string().url(),
+    FIREBASE_PROJECT_ID: z.string().optional(),
+    FIREBASE_CLIENT_EMAIL: z.string().optional(),
+    FIREBASE_PRIVATE_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().min(1),
     PLATFORM_FEE_PERCENTAGE: z.coerce.number().min(0).max(100).default(12),
     MAX_UPLOAD_BYTES: z.coerce
@@ -78,6 +81,28 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         message: 'CORS_ORIGIN cannot contain * in production',
         path: ['CORS_ORIGIN'],
+      });
+    }
+    const firebaseValues = [
+      env.FIREBASE_PROJECT_ID,
+      env.FIREBASE_CLIENT_EMAIL,
+      env.FIREBASE_PRIVATE_KEY,
+    ];
+    if (firebaseValues.some(Boolean) && !firebaseValues.every(Boolean)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'All Firebase service-account settings must be provided together',
+        path: ['FIREBASE_PROJECT_ID'],
+      });
+    }
+    if (
+      env.FIREBASE_CLIENT_EMAIL &&
+      !z.string().email().safeParse(env.FIREBASE_CLIENT_EMAIL).success
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'FIREBASE_CLIENT_EMAIL must be a valid email address',
+        path: ['FIREBASE_CLIENT_EMAIL'],
       });
     }
   });
@@ -142,6 +167,16 @@ export default {
     currency: env.STRIPE_CURRENCY.toLowerCase(),
     publicUrl: env.API_PUBLIC_URL.replace(/\/$/, ''),
     connectCountry: 'AE',
+  },
+  firebase: {
+    projectId: env.FIREBASE_PROJECT_ID ?? '',
+    clientEmail: env.FIREBASE_CLIENT_EMAIL ?? '',
+    privateKey: (env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
+    enabled: Boolean(
+      env.FIREBASE_PROJECT_ID &&
+        env.FIREBASE_CLIENT_EMAIL &&
+        env.FIREBASE_PRIVATE_KEY,
+    ),
   },
   openai: { apiKey: env.OPENAI_API_KEY },
   platform: { feePercentage: env.PLATFORM_FEE_PERCENTAGE },

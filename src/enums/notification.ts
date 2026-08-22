@@ -1,0 +1,30 @@
+/* eslint-disable no-unused-vars */
+export enum NOTIFICATION_TYPE {
+  ORDER_SECURED = 'order_secured',
+  ITEM_RESERVED = 'item_reserved',
+  COLLECTION_PENDING = 'collection_pending',
+  ITEM_COLLECTED = 'item_collected',
+  ITEM_VERIFICATION = 'item_verification',
+  PAYOUT_PROCESSING = 'payout_processing',
+  PAYOUT_PAID = 'payout_paid',
+  READY_FOR_DELIVERY = 'ready_for_delivery',
+  ITEM_DELIVERED = 'item_delivered',
+  ORDER_COMPLETED = 'order_completed',
+  ORDER_CANCELLED = 'order_cancelled',
+  PAYMENT_FAILED = 'payment_failed',
+  PAYMENT_REFUNDED = 'payment_refunded',
+  ORDER_SCHEDULE_UPDATED = 'order_schedule_updated',
+  ISSUE_CREATED = 'issue_created',
+  ISSUE_RESOLVED = 'issue_resolved',
+  WISHLIST_ITEM_SAVED = 'wishlist_item_saved',
+  WISHLIST_ITEM_UPDATED = 'wishlist_item_updated',
+  WISHLIST_ITEM_UNAVAILABLE = 'wishlist_item_unavailable',
+  WISHLIST_ITEM_AVAILABLE = 'wishlist_item_available',
+  SELLER_ONBOARDING_REQUIRED = 'seller_onboarding_required',
+}
+
+export enum DEVICE_PLATFORM {
+  ANDROID = 'android',
+  IOS = 'ios',
+  WEB = 'web',
+}

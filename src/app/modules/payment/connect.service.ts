@@ -9,6 +9,7 @@ import {
 } from '../../../integrations/stripe';
 import { errorLogger } from '../../../shared/logger';
 import { User } from '../user/user.model';
+import { NotificationEvent } from '../notification/notification.event';
 
 type IStripeErrorDetails = {
   code?: unknown;
@@ -194,6 +195,7 @@ const onboardingLink = async (userId: string) => {
   } catch (error) {
     return throwConnectProviderError('create account link', error);
   }
+  void NotificationEvent.sellerOnboardingRequired(userId);
   return { url: link.url, expiresAt: link.expires_at };
 };
 

@@ -78,3 +78,21 @@ export const paymentMethodMutationLimiter = rateLimit({
     message: 'Too many payment method changes. Please try again later.',
   },
 });
+
+export const notificationDeviceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => {
+    const authenticatedUser = req.user as { id?: unknown } | undefined;
+    const userId = authenticatedUser?.id;
+    return typeof userId === 'string'
+      ? `user:${userId}`
+      : `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+  },
+  message: {
+    success: false,
+    message: 'Too many notification device changes. Please try again later.',
+  },
+});

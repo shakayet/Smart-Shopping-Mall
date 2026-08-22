@@ -13,6 +13,7 @@
     "prettier:check": "prettier --ignore-path .gitignore --check \"src/**/*.+(ts|json)\" \"tests/**/*.js\"",
     "prettier:fix": "prettier --write .",
     "test": "npm run build && node --test tests/**/*.test.js",
+    "test:notifications:integration": "npm run build && node scripts/notification-integration-check.js",
     "check": "npm run typecheck && npm run lint:check && npm test"
   },
   "keywords": [],
@@ -52,6 +53,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^8.5.2",
     "express-session": "^1.19.0",
+    "firebase-admin": "^14.0.0",
     "helmet": "^8.2.0",
     "http-status": "^2.1.0",
     "http-status-codes": "^2.3.0",

@@ -12,6 +12,9 @@ import {
   buildProductFeedCacheDiscriminator,
   buildProductFeedViewerFilter,
 } from './product-feed.util';
+import { Wishlist } from '../wishlist/wishlist.model';
+import { NotificationEvent } from '../notification/notification.event';
+import { errorLogger } from '../../../shared/logger';
 
 export const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
@@ -209,6 +212,25 @@ const updateProductToDB = async (
 
   const result = await Product.findByIdAndUpdate(id, payload, { new: true });
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
+  if (result) {
+    void Wishlist.distinct('user', { product: result._id })
+      .then(watcherIds =>
+        Promise.all(
+          watcherIds.map(watcherId =>
+            NotificationEvent.wishlistItemUpdated(
+              watcherId.toString(),
+              result._id.toString(),
+              result.name,
+              (result.get('updatedAt') as Date).getTime().toString(),
+            ),
+          ),
+        ),
+      )
+      .catch(error => {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errorLogger.error(`[NOTIFICATION] Wishlist update failed: ${message}`);
+      });
+  }
   return result;
 };
 
@@ -245,10 +267,23 @@ const deleteProductFromDB = async (
   if (product.proofOfPurchase) {
     deletePromises.push(deleteFromS3(product.proofOfPurchase));
   }
+  const watcherIds = await Wishlist.distinct('user', { product: product._id });
   await Promise.all(deletePromises);
 
   const result = await Product.findByIdAndDelete(id);
+  await Wishlist.deleteMany({ product: product._id });
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
+  if (result) {
+    void Promise.all(
+      watcherIds.map(watcherId =>
+        NotificationEvent.wishlistItemUnavailable(
+          watcherId.toString(),
+          result._id.toString(),
+          result.name,
+        ),
+      ),
+    );
+  }
   return result;
 };
 
