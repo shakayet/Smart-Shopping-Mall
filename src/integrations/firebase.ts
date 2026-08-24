@@ -14,11 +14,7 @@ export const getFirebaseMessaging = (): Messaging | null => {
   const app =
     getApps()[0] ??
     initializeApp({
-      credential: cert({
-        projectId: config.firebase.projectId,
-        clientEmail: config.firebase.clientEmail,
-        privateKey: config.firebase.privateKey,
-      }),
+      credential: cert(config.firebase.serviceAccount!),
     });
   messaging = getMessaging(app);
   return messaging;

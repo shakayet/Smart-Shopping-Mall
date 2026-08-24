@@ -13,6 +13,18 @@ let socketServer: SocketServer | undefined;
 let shuttingDown = false;
 let reservationTimer: ReturnType<typeof setInterval> | undefined;
 
+const isBrokenPipeError = (error: unknown): boolean =>
+  error instanceof Error && 'code' in error && error.code === 'EPIPE';
+
+// Logging destinations can disappear when a terminal, deployment log collector,
+// or task runner disconnects. A broken log pipe must not take the API offline.
+process.stdout.on('error', error => {
+  if (!isBrokenPipeError(error)) throw error;
+});
+process.stderr.on('error', error => {
+  if (!isBrokenPipeError(error)) throw error;
+});
+
 const shutdown = async (signal: string, exitCode = 0) => {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -73,6 +85,7 @@ const main = async () => {
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('uncaughtException', error => {
+  if (isBrokenPipeError(error)) return;
   errorLogger.error('Uncaught exception', error);
   void shutdown('uncaughtException', 1);
 });

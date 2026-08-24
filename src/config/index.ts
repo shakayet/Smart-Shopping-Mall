@@ -15,6 +15,33 @@ if (environmentResult.error && process.env.NODE_ENV !== 'production') {
 }
 
 const optionalUrl = z.string().url().optional();
+const firebaseServiceAccountSchema = z.object({
+  type: z.literal('service_account'),
+  project_id: z.string().min(1),
+  private_key: z.string().includes('-----BEGIN PRIVATE KEY-----'),
+  client_email: z.string().email(),
+});
+
+const decodeFirebaseServiceAccount = (encodedValue?: string) => {
+  if (!encodedValue) return null;
+
+  try {
+    const decodedValue = Buffer.from(encodedValue.trim(), 'base64').toString('utf8');
+    const parsedValue: unknown = JSON.parse(decodedValue);
+    const serviceAccount = firebaseServiceAccountSchema.parse(parsedValue);
+
+    return {
+      projectId: serviceAccount.project_id,
+      clientEmail: serviceAccount.client_email,
+      privateKey: serviceAccount.private_key.replace(/\\n/g, '\n'),
+    };
+  } catch {
+    throw new Error(
+      'Invalid environment configuration: FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 must contain a Base64-encoded Firebase service-account JSON file',
+    );
+  }
+};
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -51,9 +78,8 @@ const envSchema = z
     WEBHOOK_SECRET: z.string().min(1),
     STRIPE_CURRENCY: z.string().length(3).default('aed'),
     API_PUBLIC_URL: z.string().url(),
-    FIREBASE_PROJECT_ID: z.string().optional(),
-    FIREBASE_CLIENT_EMAIL: z.string().optional(),
-    FIREBASE_PRIVATE_KEY: z.string().optional(),
+    FIREBASE_SERVICE_ACCOUNT_KEY_BASE64: z.string().min(1).optional(),
+    FIREBASE_WEB_PUSH_CREDENTIALS: z.string().min(20).max(4096).optional(),
     OPENAI_API_KEY: z.string().min(1),
     PLATFORM_FEE_PERCENTAGE: z.coerce.number().min(0).max(100).default(12),
     MAX_UPLOAD_BYTES: z.coerce
@@ -83,28 +109,6 @@ const envSchema = z
         path: ['CORS_ORIGIN'],
       });
     }
-    const firebaseValues = [
-      env.FIREBASE_PROJECT_ID,
-      env.FIREBASE_CLIENT_EMAIL,
-      env.FIREBASE_PRIVATE_KEY,
-    ];
-    if (firebaseValues.some(Boolean) && !firebaseValues.every(Boolean)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'All Firebase service-account settings must be provided together',
-        path: ['FIREBASE_PROJECT_ID'],
-      });
-    }
-    if (
-      env.FIREBASE_CLIENT_EMAIL &&
-      !z.string().email().safeParse(env.FIREBASE_CLIENT_EMAIL).success
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'FIREBASE_CLIENT_EMAIL must be a valid email address',
-        path: ['FIREBASE_CLIENT_EMAIL'],
-      });
-    }
   });
 
 const parsed = envSchema.safeParse(process.env);
@@ -117,6 +121,9 @@ if (!parsed.success) {
 
 const env = parsed.data;
 const corsOrigins = env.CORS_ORIGIN.split(',').map(origin => origin.trim());
+const firebaseServiceAccount = decodeFirebaseServiceAccount(
+  env.FIREBASE_SERVICE_ACCOUNT_KEY_BASE64,
+);
 
 export default {
   ip_address: env.IP_ADDRESS,
@@ -169,14 +176,9 @@ export default {
     connectCountry: 'AE',
   },
   firebase: {
-    projectId: env.FIREBASE_PROJECT_ID ?? '',
-    clientEmail: env.FIREBASE_CLIENT_EMAIL ?? '',
-    privateKey: (env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
-    enabled: Boolean(
-      env.FIREBASE_PROJECT_ID &&
-        env.FIREBASE_CLIENT_EMAIL &&
-        env.FIREBASE_PRIVATE_KEY,
-    ),
+    serviceAccount: firebaseServiceAccount,
+    webPushCredentials: env.FIREBASE_WEB_PUSH_CREDENTIALS ?? '',
+    enabled: Boolean(firebaseServiceAccount),
   },
   openai: { apiKey: env.OPENAI_API_KEY },
   platform: { feePercentage: env.PLATFORM_FEE_PERCENTAGE },

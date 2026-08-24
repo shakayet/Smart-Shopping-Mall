@@ -6,5 +6,6 @@ node_modules
 /dist
 /coverage
 /tmp_test
+/.runtime
 test-product-image.png
 test-proof-of-purchase.pdf
