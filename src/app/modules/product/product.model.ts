@@ -27,6 +27,12 @@ const productSchema = new Schema<IProduct>(
       enum: ['available', 'secured', 'sold'],
       default: 'available',
     },
+    wishlistCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      required: true,
+    },
     seller: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     buyer: { type: Schema.Types.ObjectId, ref: 'User' },
     reservationExpiresAt: { type: Date, default: null },
@@ -52,6 +58,7 @@ const productSchema = new Schema<IProduct>(
 
 productSchema.index({ status: 1 });
 productSchema.index({ seller: 1 });
+productSchema.index({ wishlistCount: -1 });
 productSchema.index({ status: 1, reservationExpiresAt: 1 });
 
 export const Product = model<IProduct>('Product', productSchema);

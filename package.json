@@ -14,6 +14,7 @@
     "prettier:fix": "prettier --write .",
     "test": "npm run build && node --test tests/**/*.test.js",
     "test:notifications:integration": "npm run build && node scripts/notification-integration-check.js",
+    "migrate:wishlist-counts": "npm run build && node scripts/backfill-wishlist-counts.js",
     "check": "npm run typecheck && npm run lint:check && npm test"
   },
   "keywords": [],

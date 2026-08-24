@@ -92,6 +92,7 @@ const toPublicProduct = (product: any) => {
   value.originalPackagingAvailable = Boolean(
     value.originalPackagingAvailable,
   );
+  value.wishlistCount = Math.max(0, Number(value.wishlistCount) || 0);
   value.proofOfPurchase = value.proofOfPurchase || null;
   if (value.seller && typeof value.seller === 'object') {
     const { _id, name, avatar, image, contact } = value.seller;

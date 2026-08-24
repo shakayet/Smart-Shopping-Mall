@@ -6,6 +6,8 @@ const { socketHelper } = require('../dist/helpers/socketHelper.js');
 const {
   PRODUCT_LIST_CACHE_PREFIX,
   PRODUCT_STATUS_CHANGED_EVENT,
+  PRODUCT_WISHLIST_COUNT_CHANGED_EVENT,
+  publishProductWishlistCount,
   synchronizeProductStatusMutation,
 } = require('../dist/app/modules/product/product-state-sync.js');
 
@@ -55,6 +57,30 @@ test('a failed or unmatched mutation does not publish a false status change', as
     assert.equal(result, null);
     assert.deepEqual(cache.get(cacheKey), { status: 'available' });
     assert.deepEqual(emitted, []);
+  } finally {
+    socketHelper.emitToAll = originalEmitToAll;
+  }
+});
+
+test('wishlist count changes invalidate buyer and seller feeds and broadcast the total', () => {
+  const sellerCacheKey = `${PRODUCT_LIST_CACHE_PREFIX}wishlist-seller-view`;
+  const buyerCacheKey = `${PRODUCT_LIST_CACHE_PREFIX}wishlist-buyer-view`;
+  cache.set(sellerCacheKey, { wishlistCount: 1 }, 10_000);
+  cache.set(buyerCacheKey, { wishlistCount: 1 }, 10_000);
+
+  const emitted = [];
+  const originalEmitToAll = socketHelper.emitToAll;
+  socketHelper.emitToAll = (event, payload) => emitted.push({ event, payload });
+
+  try {
+    publishProductWishlistCount('product-3', 2);
+
+    assert.equal(cache.get(sellerCacheKey), undefined);
+    assert.equal(cache.get(buyerCacheKey), undefined);
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, PRODUCT_WISHLIST_COUNT_CHANGED_EVENT);
+    assert.equal(emitted[0].payload.productId, 'product-3');
+    assert.equal(emitted[0].payload.wishlistCount, 2);
   } finally {
     socketHelper.emitToAll = originalEmitToAll;
   }

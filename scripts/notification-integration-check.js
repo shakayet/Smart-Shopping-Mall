@@ -40,9 +40,19 @@ const api = async (method, path, accessToken, body) => {
 
 const connectSocket = accessToken => {
   let eventResolver;
+  const wishlistCountEvents = [];
+  const wishlistCountWaiters = [];
   const notificationEvent = new Promise(resolve => {
     eventResolver = resolve;
   });
+  const nextWishlistCountEvent = () =>
+    new Promise(resolve => {
+      if (wishlistCountEvents.length > 0) {
+        resolve(wishlistCountEvents.shift());
+      } else {
+        wishlistCountWaiters.push(resolve);
+      }
+    });
   const connected = new Promise((resolve, reject) => {
     const timeout = setTimeout(
       () => reject(new Error('Socket authentication timed out')),
@@ -63,6 +73,11 @@ const connectSocket = accessToken => {
       } else if (packet.startsWith('42')) {
         const [event, payload] = JSON.parse(packet.slice(2));
         if (event === 'notification:new') eventResolver(payload);
+        if (event === 'product:wishlist-count-changed') {
+          const waiter = wishlistCountWaiters.shift();
+          if (waiter) waiter(payload);
+          else wishlistCountEvents.push(payload);
+        }
       }
     });
     socket.addEventListener('error', () => {
@@ -70,7 +85,7 @@ const connectSocket = accessToken => {
       reject(new Error('Socket connection failed'));
     });
   });
-  return { connected, notificationEvent };
+  return { connected, notificationEvent, nextWishlistCountEvent };
 };
 
 const cleanup = async () => {
@@ -132,6 +147,7 @@ const main = async () => {
     originalPackagingAvailable: true,
     proofOfPurchase: null,
     status: 'available',
+    wishlistCount: 0,
     seller: sellerId,
     orderId: Date.now(),
     createdAt: now,
@@ -158,10 +174,43 @@ const main = async () => {
   );
   assert.equal(registered.data.registered, true);
 
-  await api(
+  const feedBefore = await api(
+    'GET',
+    '/api/v1/products?page=1&limit=10&status=available',
+    accessToken,
+  );
+  assert.equal(
+    feedBefore.data.find(item => item._id === productId.toString()).wishlistCount,
+    0,
+  );
+
+  const added = await api(
     'POST',
     `/api/v1/wishlist/${productId.toString()}`,
     accessToken,
+  );
+  assert.equal(added.data.wishlistCount, 1);
+  const addedCountEvent = await Promise.race([
+    socketTest.nextWishlistCountEvent(),
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Wishlist count add event timed out')),
+        10_000,
+      ),
+    ),
+  ]);
+  assert.equal(addedCountEvent.productId, productId.toString());
+  assert.equal(addedCountEvent.wishlistCount, 1);
+
+  const feedAfterAdd = await api(
+    'GET',
+    '/api/v1/products?page=1&limit=10&status=available',
+    accessToken,
+  );
+  assert.equal(
+    feedAfterAdd.data.find(item => item._id === productId.toString())
+      .wishlistCount,
+    1,
   );
   const realtimeNotification = await Promise.race([
     socketTest.notificationEvent,
@@ -176,6 +225,35 @@ const main = async () => {
   assert.equal(realtimeNotification.data.productId, productId.toString());
   assert.equal('recipient' in realtimeNotification, false);
   assert.equal('eventKey' in realtimeNotification, false);
+
+  const removed = await api(
+    'DELETE',
+    `/api/v1/wishlist/${productId.toString()}`,
+    accessToken,
+  );
+  assert.equal(removed.data.wishlistCount, 0);
+  const removedCountEvent = await Promise.race([
+    socketTest.nextWishlistCountEvent(),
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Wishlist count remove event timed out')),
+        10_000,
+      ),
+    ),
+  ]);
+  assert.equal(removedCountEvent.productId, productId.toString());
+  assert.equal(removedCountEvent.wishlistCount, 0);
+
+  const feedAfterRemove = await api(
+    'GET',
+    '/api/v1/products?page=1&limit=10&status=available',
+    accessToken,
+  );
+  assert.equal(
+    feedAfterRemove.data.find(item => item._id === productId.toString())
+      .wishlistCount,
+    0,
+  );
 
   const list = await api(
     'GET',
@@ -233,6 +311,10 @@ const main = async () => {
         'device registration',
         'business-event notification creation',
         'real-time private delivery',
+        'wishlist count add transaction',
+        'wishlist count remove transaction',
+        'wishlist feed cache invalidation',
+        'wishlist count real-time delivery',
         'notification listing and pagination',
         'unread count',
         'mark as read',

@@ -17,6 +17,7 @@ export interface IProduct {
   originalPackagingAvailable: boolean;
   proofOfPurchase?: string | null;
   status: IProductStatus;
+  wishlistCount: number;
   seller: Types.ObjectId;
   orderId: number;
   buyer?: Types.ObjectId;

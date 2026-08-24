@@ -13,19 +13,28 @@ const addToWishlist = catchAsync(async (req: Request, res: Response) => {
     success: true,
     statusCode: StatusCodes.CREATED,
     message: 'Product added to wishlist',
-    data: result,
+    data: {
+      ...result.wishlist.toJSON(),
+      wishlistCount: result.wishlistCount,
+    },
   });
 });
 
 const removeFromWishlist = catchAsync(async (req: Request, res: Response) => {
   const user = req.user as any;
-  await WishlistService.removeFromWishlist(user.id, req.params.productId);
+  const result = await WishlistService.removeFromWishlist(
+    user.id,
+    req.params.productId,
+  );
 
   sendResponse(res, {
     success: true,
     statusCode: StatusCodes.OK,
     message: 'Product removed from wishlist',
-    data: null,
+    data: {
+      productId: req.params.productId,
+      wishlistCount: result.wishlistCount,
+    },
   });
 });
 

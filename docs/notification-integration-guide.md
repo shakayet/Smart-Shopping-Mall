@@ -140,11 +140,18 @@ socket.on('product:status-changed', (payload) {
   // Update matching buyer/seller product details immediately.
   // Remove secured/sold products from every "available" feed.
 });
+
+socket.on('product:wishlist-count-changed', (payload) {
+  // payload: { productId, wishlistCount, changedAt }
+  // Replace the matching product's displayed wishlist count.
+});
 ```
 
 `product:status-changed` is broadcast to authenticated sockets after the
 database mutation succeeds. Treat `status` as the authoritative product state;
 do not infer availability independently from buyer or seller order state.
+`product:wishlist-count-changed` contains the authoritative unique-user total;
+replace the displayed value instead of incrementing it locally.
 
 Reconnect with a fresh JWT after an access-token refresh. Disconnect the
 socket during logout.

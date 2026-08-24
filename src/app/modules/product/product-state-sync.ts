@@ -4,6 +4,8 @@ import { IProductStatus } from './product.interface';
 
 export const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
 export const PRODUCT_STATUS_CHANGED_EVENT = 'product:status-changed';
+export const PRODUCT_WISHLIST_COUNT_CHANGED_EVENT =
+  'product:wishlist-count-changed';
 
 export const invalidateProductListCache = () => {
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
@@ -32,4 +34,17 @@ export const synchronizeProductStatusMutation = async <T>(
     changedAt: new Date().toISOString(),
   });
   return result;
+};
+
+export const publishProductWishlistCount = (
+  productId: string,
+  wishlistCount: number,
+) => {
+  const normalizedCount = Math.max(0, Math.trunc(wishlistCount));
+  invalidateProductListCache();
+  socketHelper.emitToAll(PRODUCT_WISHLIST_COUNT_CHANGED_EVENT, {
+    productId,
+    wishlistCount: normalizedCount,
+    changedAt: new Date().toISOString(),
+  });
 };
