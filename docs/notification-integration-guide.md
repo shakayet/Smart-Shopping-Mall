@@ -134,7 +134,17 @@ final socket = io(
 socket.on('notification:new', (payload) {
   // Insert at the top of the notification list and increment unread count.
 });
+
+socket.on('product:status-changed', (payload) {
+  // payload: { productId, status, changedAt }
+  // Update matching buyer/seller product details immediately.
+  // Remove secured/sold products from every "available" feed.
+});
 ```
+
+`product:status-changed` is broadcast to authenticated sockets after the
+database mutation succeeds. Treat `status` as the authoritative product state;
+do not infer availability independently from buyer or seller order state.
 
 Reconnect with a fresh JWT after an access-token refresh. Disconnect the
 socket during logout.

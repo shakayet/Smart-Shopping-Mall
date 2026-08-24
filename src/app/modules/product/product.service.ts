@@ -15,8 +15,13 @@ import {
 import { Wishlist } from '../wishlist/wishlist.model';
 import { NotificationEvent } from '../notification/notification.event';
 import { errorLogger } from '../../../shared/logger';
+import {
+  invalidateProductListCache,
+  PRODUCT_LIST_CACHE_PREFIX,
+  synchronizeProductStatusMutation,
+} from './product-state-sync';
 
-export const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
+export { PRODUCT_LIST_CACHE_PREFIX } from './product-state-sync';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
 
 const createProductToDB = async (
@@ -77,7 +82,7 @@ const createProductToDB = async (
     'seller',
     'name image avatar contact location country',
   );
-  cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
+  invalidateProductListCache();
   return toPublicProduct(result);
 };
 
@@ -210,8 +215,14 @@ const updateProductToDB = async (
     );
   }
 
-  const result = await Product.findByIdAndUpdate(id, payload, { new: true });
-  cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
+  const mutation = Product.findByIdAndUpdate(id, payload, { new: true });
+  const result = payload.status
+    ? await synchronizeProductStatusMutation(mutation, {
+        productId: id,
+        status: payload.status,
+      })
+    : await mutation;
+  if (!payload.status) invalidateProductListCache();
   if (result) {
     void Wishlist.distinct('user', { product: result._id })
       .then(watcherIds =>
@@ -272,7 +283,7 @@ const deleteProductFromDB = async (
 
   const result = await Product.findByIdAndDelete(id);
   await Wishlist.deleteMany({ product: product._id });
-  cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
+  invalidateProductListCache();
   if (result) {
     void Promise.all(
       watcherIds.map(watcherId =>

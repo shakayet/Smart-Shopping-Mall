@@ -31,6 +31,7 @@ import { PaymentMethodService } from '../payment-method/payment-method.service';
 import { Issue } from '../issue/issue.model';
 import { buildOrderDetails } from './order.presenter';
 import { NotificationEvent } from '../notification/notification.event';
+import { synchronizeProductStatusMutation } from '../product/product-state-sync';
 
 const generateOrderNumber = () => {
   const random = Math.floor(100 + Math.random() * 900);
@@ -69,19 +70,22 @@ const checkoutOrder = async (
   const orderNumber = generateOrderNumber();
 
   const reservationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-  const reservedProduct = await Product.findOneAndUpdate(
-    {
-      _id: product._id,
-      status: 'available',
-    },
-    {
-      $set: {
-        status: 'secured',
-        buyer: buyerId,
-        reservationExpiresAt,
+  const reservedProduct = await synchronizeProductStatusMutation(
+    Product.findOneAndUpdate(
+      {
+        _id: product._id,
+        status: 'available',
       },
-    },
-    { new: true },
+      {
+        $set: {
+          status: 'secured',
+          buyer: buyerId,
+          reservationExpiresAt,
+        },
+      },
+      { new: true },
+    ),
+    { productId: product._id.toString(), status: 'secured' },
   );
   if (!reservedProduct) {
     throw new ApiError(StatusCodes.CONFLICT, 'This item is being purchased');
@@ -128,12 +132,15 @@ const checkoutOrder = async (
     if (paymentIntent) {
       await cancelPaymentIntent(paymentIntent.id).catch(() => undefined);
     }
-    await Product.findOneAndUpdate(
-      { _id: product._id, buyer: buyerId, reservationExpiresAt },
-      {
-        $set: { status: 'available' },
-        $unset: { buyer: 1, reservationExpiresAt: 1 },
-      },
+    await synchronizeProductStatusMutation(
+      Product.findOneAndUpdate(
+        { _id: product._id, buyer: buyerId, reservationExpiresAt },
+        {
+          $set: { status: 'available' },
+          $unset: { buyer: 1, reservationExpiresAt: 1 },
+        },
+      ),
+      { productId: product._id.toString(), status: 'available' },
     );
     throw error;
   }
@@ -190,12 +197,15 @@ const handlePaymentSucceeded = async (payment: SuccessfulPayment) => {
         status: ORDER_STATUS.REFUNDED,
       },
     });
-    await Product.findOneAndUpdate(
-      { _id: expectedOrder.product, buyer: expectedOrder.buyer },
-      {
-        $set: { status: 'available' },
-        $unset: { buyer: 1, reservationExpiresAt: 1 },
-      },
+    await synchronizeProductStatusMutation(
+      Product.findOneAndUpdate(
+        { _id: expectedOrder.product, buyer: expectedOrder.buyer },
+        {
+          $set: { status: 'available' },
+          $unset: { buyer: 1, reservationExpiresAt: 1 },
+        },
+      ),
+      { productId: expectedOrder.product.toString(), status: 'available' },
     );
     void NotificationEvent.orderStatusChanged(
       expectedOrder,
@@ -269,10 +279,13 @@ const handlePaymentSucceeded = async (payment: SuccessfulPayment) => {
     return;
   }
 
-  await Product.findByIdAndUpdate(order.product, {
-    $set: { status: 'secured', buyer: order.buyer },
-    $unset: { reservationExpiresAt: 1 },
-  });
+  await synchronizeProductStatusMutation(
+    Product.findByIdAndUpdate(order.product, {
+      $set: { status: 'secured', buyer: order.buyer },
+      $unset: { reservationExpiresAt: 1 },
+    }),
+    { productId: order.product.toString(), status: 'secured' },
+  );
   void NotificationEvent.paymentSucceeded(order);
   void NotificationEvent.wishlistAvailabilityChanged(
     order.product.toString(),
@@ -292,12 +305,15 @@ const handlePaymentFailed = async (paymentIntentId: string) => {
 
   order.payment.status = PAYMENT_STATUS.FAILED;
   await order.save();
-  await Product.findOneAndUpdate(
-    { _id: order.product, buyer: order.buyer, status: 'secured' },
-    {
-      $set: { status: 'available' },
-      $unset: { buyer: 1, reservationExpiresAt: 1 },
-    },
+  await synchronizeProductStatusMutation(
+    Product.findOneAndUpdate(
+      { _id: order.product, buyer: order.buyer, status: 'secured' },
+      {
+        $set: { status: 'available' },
+        $unset: { buyer: 1, reservationExpiresAt: 1 },
+      },
+    ),
+    { productId: order.product.toString(), status: 'available' },
   );
   void NotificationEvent.paymentFailed(order);
 };
@@ -503,10 +519,13 @@ const updateOrderStatus = async (
       );
       order.payment.status = PAYMENT_STATUS.REFUNDED;
     }
-    await Product.findByIdAndUpdate(order.product, {
-      status: 'available',
-      buyer: undefined,
-    });
+    await synchronizeProductStatusMutation(
+      Product.findByIdAndUpdate(order.product, {
+        $set: { status: 'available' },
+        $unset: { buyer: 1, reservationExpiresAt: 1 },
+      }),
+      { productId: order.product.toString(), status: 'available' },
+    );
   }
 
   if (targetStatus === ORDER_STATUS.PAYOUT_PROCESSING) {
@@ -517,7 +536,10 @@ const updateOrderStatus = async (
     targetStatus === ORDER_STATUS.COMPLETED ||
     targetStatus === ORDER_STATUS.DELIVERED
   ) {
-    await Product.findByIdAndUpdate(order.product, { status: 'sold' });
+    await synchronizeProductStatusMutation(
+      Product.findByIdAndUpdate(order.product, { $set: { status: 'sold' } }),
+      { productId: order.product.toString(), status: 'sold' },
+    );
   }
 
   order.status = targetStatus;
@@ -657,12 +679,15 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
     await cancelPaymentIntent(cancelled.payment.paymentIntentId).catch(
       () => undefined,
     );
-    await Product.findOneAndUpdate(
-      { _id: cancelled.product, buyer: cancelled.buyer },
-      {
-        $set: { status: 'available' },
-        $unset: { buyer: 1, reservationExpiresAt: 1 },
-      },
+    await synchronizeProductStatusMutation(
+      Product.findOneAndUpdate(
+        { _id: cancelled.product, buyer: cancelled.buyer },
+        {
+          $set: { status: 'available' },
+          $unset: { buyer: 1, reservationExpiresAt: 1 },
+        },
+      ),
+      { productId: cancelled.product.toString(), status: 'available' },
     );
     void NotificationEvent.orderStatusChanged(
       cancelled,
@@ -691,10 +716,13 @@ const cancelOrder = async (orderId: string, buyerId: string) => {
   });
   await order.save();
 
-  await Product.findByIdAndUpdate(order.product, {
-    status: 'available',
-    buyer: undefined,
-  });
+  await synchronizeProductStatusMutation(
+    Product.findByIdAndUpdate(order.product, {
+      $set: { status: 'available' },
+      $unset: { buyer: 1, reservationExpiresAt: 1 },
+    }),
+    { productId: order.product.toString(), status: 'available' },
+  );
 
   void NotificationEvent.orderStatusChanged(order, ORDER_STATUS.CANCELLED);
   void NotificationEvent.wishlistAvailabilityChanged(
@@ -731,12 +759,15 @@ const expirePendingOrders = async () => {
     await cancelPaymentIntent(order.payment.paymentIntentId).catch(
       () => undefined,
     );
-    await Product.findOneAndUpdate(
-      { _id: order.product, buyer: order.buyer },
-      {
-        $set: { status: 'available' },
-        $unset: { buyer: 1, reservationExpiresAt: 1 },
-      },
+    await synchronizeProductStatusMutation(
+      Product.findOneAndUpdate(
+        { _id: order.product, buyer: order.buyer },
+        {
+          $set: { status: 'available' },
+          $unset: { buyer: 1, reservationExpiresAt: 1 },
+        },
+      ),
+      { productId: order.product.toString(), status: 'available' },
     );
     void NotificationEvent.orderStatusChanged(order, ORDER_STATUS.CANCELLED);
     void NotificationEvent.wishlistAvailabilityChanged(

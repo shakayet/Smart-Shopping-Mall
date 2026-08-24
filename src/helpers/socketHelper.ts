@@ -64,4 +64,8 @@ const emitToUser = (userId: string, event: string, payload: unknown) => {
   socketServer?.to(userRoom(userId)).emit(event, payload);
 };
 
-export const socketHelper = { socket, emitToUser };
+const emitToAll = (event: string, payload: unknown) => {
+  socketServer?.emit(event, payload);
+};
+
+export const socketHelper = { socket, emitToUser, emitToAll };

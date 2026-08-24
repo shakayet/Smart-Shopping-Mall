@@ -18,8 +18,10 @@ import {
 import { emailHelper } from '../../../helpers/emailHelper';
 import { emailTemplate } from '../../../shared/emailTemplate';
 import { deleteFromS3 } from '../../../helpers/s3Helper';
-import { cache } from '../../../helpers/cache';
-import { PRODUCT_LIST_CACHE_PREFIX } from '../product/product.service';
+import {
+  invalidateProductListCache,
+  synchronizeProductStatusMutation,
+} from '../product/product-state-sync';
 import { Types } from 'mongoose';
 import { NotificationEvent } from '../notification/notification.event';
 import { Wishlist } from '../wishlist/wishlist.model';
@@ -173,10 +175,13 @@ const resolveIssue = async (
     }
   } else if (action === 'make_available') {
     // Update product status and clear buyer
-    await Product.findByIdAndUpdate(product._id, {
-      status: 'available',
-      buyer: undefined,
-    });
+    await synchronizeProductStatusMutation(
+      Product.findByIdAndUpdate(product._id, {
+        $set: { status: 'available' },
+        $unset: { buyer: 1, reservationExpiresAt: 1 },
+      }),
+      { productId: product._id.toString(), status: 'available' },
+    );
     void NotificationEvent.wishlistAvailabilityChanged(
       product._id.toString(),
       true,
@@ -202,7 +207,7 @@ const resolveIssue = async (
   }
 
   // Clear product cache
-  cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
+  invalidateProductListCache();
 
   return issue;
 };
