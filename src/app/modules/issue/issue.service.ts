@@ -6,15 +6,7 @@ import { Issue } from './issue.model';
 import { Product } from '../product/product.model';
 import { Order } from '../order/order.model';
 import { User } from '../user/user.model';
-import {
-  createRefund,
-  reverseSellerTransfer,
-} from '../../../integrations/stripe';
-import {
-  ORDER_STATUS,
-  PAYMENT_STATUS,
-  PAYOUT_STATUS,
-} from '../../../enums/order';
+import { ORDER_OUTCOME, ORDER_STATUS } from '../../../enums/order';
 import { emailHelper } from '../../../helpers/emailHelper';
 import { emailTemplate } from '../../../shared/emailTemplate';
 import { deleteFromS3 } from '../../../helpers/s3Helper';
@@ -22,13 +14,14 @@ import {
   invalidateProductListCache,
   synchronizeProductStatusMutation,
 } from '../product/product-state-sync';
-import { Types } from 'mongoose';
 import { NotificationEvent } from '../notification/notification.event';
 import { Wishlist } from '../wishlist/wishlist.model';
+import { OrderService } from '../order/order.service';
 
 const createIssue = async (
   productId: string,
   issueType: string,
+  outcome: ORDER_OUTCOME,
   reason: string,
   adminId: string,
 ) => {
@@ -58,32 +51,16 @@ const createIssue = async (
     });
   }
 
-  // Refund buyer if payment was made
-  const refunded = !!(order && order.payment.status === PAYMENT_STATUS.PAID);
-  if (refunded && order) {
-    if (order.payoutTransferId && order.payoutStatus === PAYOUT_STATUS.PAID) {
-      const reversal = await reverseSellerTransfer(
-        order.payoutTransferId,
-        order.sellerPayout,
-        order.orderNumber,
-      );
-      order.payoutReversalId = reversal.id;
-      order.payoutStatus = PAYOUT_STATUS.REVERSED;
-    }
-    await createRefund(
-      order.payment.paymentIntentId,
-      `order-refund:${order._id.toString()}`,
+  const refunded = Boolean(order);
+  if (order) {
+    order = await OrderService.updateOrderStatus(
+      order._id.toString(),
+      ORDER_STATUS.REFUNDED,
+      reason,
+      adminId,
+      outcome,
+      false,
     );
-    order.payment.status = PAYMENT_STATUS.REFUNDED;
-    order.status = ORDER_STATUS.REFUNDED;
-    order.statusHistory.push({
-      status: ORDER_STATUS.REFUNDED,
-      note: 'Refunded because an issue was created',
-      changedAt: new Date(),
-      changedBy: new Types.ObjectId(adminId),
-    });
-    await order.save();
-    void NotificationEvent.orderStatusChanged(order, ORDER_STATUS.REFUNDED);
   }
 
   // Create issue
@@ -92,12 +69,10 @@ const createIssue = async (
     buyer: product.buyer,
     seller: product.seller,
     issueType,
+    outcome,
     reason,
     admin: adminId,
   });
-  if (order) {
-    void NotificationEvent.issueCreated(issue._id.toString(), order);
-  }
 
   // Notify seller
   const seller = await User.findById(product.seller);

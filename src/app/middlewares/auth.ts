@@ -4,6 +4,7 @@ import { Secret } from 'jsonwebtoken';
 import config from '../../config';
 import ApiError from '../../errors/ApiError';
 import { jwtHelper } from '../../helpers/jwtHelper';
+import { User } from '../modules/user/user.model';
 
 export const optionalAuth = async (
   req: Request,
@@ -48,6 +49,21 @@ const auth =
         token,
         config.jwt.jwt_secret as Secret,
       );
+      const account = await User.findById(verifyUser.id)
+        .select('role status verified')
+        .lean();
+      if (
+        !account ||
+        !account.verified ||
+        account.role !== verifyUser.role ||
+        account.status === 'suspended' ||
+        account.status === 'ban'
+      ) {
+        throw new ApiError(
+          StatusCodes.UNAUTHORIZED,
+          'Your account is not permitted to access this API',
+        );
+      }
       //set user to header
       req.user = verifyUser;
 

@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/consistent-type-definitions */
 import { Types } from 'mongoose';
 
-export type IProductStatus = 'available' | 'secured' | 'sold';
+export type IProductStatus =
+  | 'available'
+  | 'secured'
+  | 'sold'
+  | 'under_review';
 
 export interface IProduct {
   name: string;

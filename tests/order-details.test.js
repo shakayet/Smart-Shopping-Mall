@@ -33,6 +33,7 @@ test('verification state distinguishes pending, verified, and failed orders', ()
   assert.equal(getVerificationState('verification', false).status, 'in_progress');
   assert.equal(getVerificationState('payout_processing', false).isVerified, true);
   assert.equal(getVerificationState('refunded', true).status, 'failed');
+  assert.equal(getVerificationState('refunded', false, true).isVerified, true);
 });
 
 test('order details include the UI contract and redact Stripe identifiers', () => {
@@ -96,5 +97,7 @@ test('order details include the UI contract and redact Stripe identifiers', () =
   assert.equal(result.buyer.location, 'Abu Dhabi');
   assert.equal(result.actions.markAsDelivered.enabled, true);
   assert.equal(result.actions.reportIssue.enabled, true);
+  assert.equal(result.actions.reportMissedCollection.enabled, false);
+  assert.equal(result.policy.missedCollectionAttempts, 0);
   assert.equal(result.payment.paymentIntentId, undefined);
 });

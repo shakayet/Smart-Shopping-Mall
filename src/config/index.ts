@@ -15,6 +15,8 @@ if (environmentResult.error && process.env.NODE_ENV !== 'production') {
 }
 
 const optionalUrl = z.string().url().optional();
+const emptyStringToUndefined = (value: unknown) =>
+  typeof value === 'string' && value.trim() === '' ? undefined : value;
 const firebaseServiceAccountSchema = z.object({
   type: z.literal('service_account'),
   project_id: z.string().min(1),
@@ -78,10 +80,33 @@ const envSchema = z
     WEBHOOK_SECRET: z.string().min(1),
     STRIPE_CURRENCY: z.string().length(3).default('aed'),
     API_PUBLIC_URL: z.string().url(),
+    TEST_FIXED_OTP_EMAIL: z.preprocess(
+      emptyStringToUndefined,
+      z.string().trim().email().optional(),
+    ),
+    TEST_FIXED_OTP_CODE: z.preprocess(
+      emptyStringToUndefined,
+      z.string().regex(/^\d{6}$/).optional(),
+    ),
     FIREBASE_SERVICE_ACCOUNT_KEY_BASE64: z.string().min(1).optional(),
     FIREBASE_WEB_PUSH_CREDENTIALS: z.string().min(20).max(4096).optional(),
     OPENAI_API_KEY: z.string().min(1),
     PLATFORM_FEE_PERCENTAGE: z.coerce.number().min(0).max(100).default(12),
+    SELLER_STRIKE_SUSPENSION_THRESHOLD: z.coerce
+      .number()
+      .int()
+      .min(2)
+      .default(3),
+    MISSED_COLLECTION_CANCELLATION_THRESHOLD: z.coerce
+      .number()
+      .int()
+      .min(2)
+      .default(3),
+    BUYER_REJECTION_RESTRICTION_THRESHOLD: z.coerce
+      .number()
+      .int()
+      .min(2)
+      .default(3),
     MAX_UPLOAD_BYTES: z.coerce
       .number()
       .int()
@@ -107,6 +132,21 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         message: 'CORS_ORIGIN cannot contain * in production',
         path: ['CORS_ORIGIN'],
+      });
+    }
+    const fixedOtpValues = [env.TEST_FIXED_OTP_EMAIL, env.TEST_FIXED_OTP_CODE];
+    if (fixedOtpValues.some(Boolean) && !fixedOtpValues.every(Boolean)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'TEST_FIXED_OTP_EMAIL and TEST_FIXED_OTP_CODE must be provided together',
+        path: ['TEST_FIXED_OTP_EMAIL'],
+      });
+    }
+    if (env.NODE_ENV === 'production' && fixedOtpValues.some(Boolean)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Fixed test OTP credentials cannot be enabled in production',
+        path: ['TEST_FIXED_OTP_EMAIL'],
       });
     }
   });
@@ -180,7 +220,24 @@ export default {
     webPushCredentials: env.FIREBASE_WEB_PUSH_CREDENTIALS ?? '',
     enabled: Boolean(firebaseServiceAccount),
   },
+  fixedTestOtp: {
+    enabled: Boolean(
+      env.NODE_ENV !== 'production' &&
+        env.TEST_FIXED_OTP_EMAIL &&
+        env.TEST_FIXED_OTP_CODE,
+    ),
+    email: env.TEST_FIXED_OTP_EMAIL?.toLowerCase() ?? '',
+    code: env.TEST_FIXED_OTP_CODE ? Number(env.TEST_FIXED_OTP_CODE) : 0,
+  },
   openai: { apiKey: env.OPENAI_API_KEY },
   platform: { feePercentage: env.PLATFORM_FEE_PERCENTAGE },
+  penaltyPolicy: {
+    sellerStrikeSuspensionThreshold:
+      env.SELLER_STRIKE_SUSPENSION_THRESHOLD,
+    missedCollectionCancellationThreshold:
+      env.MISSED_COLLECTION_CANCELLATION_THRESHOLD,
+    buyerRejectionRestrictionThreshold:
+      env.BUYER_REJECTION_RESTRICTION_THRESHOLD,
+  },
   uploads: { maxBytes: env.MAX_UPLOAD_BYTES },
 } as const;

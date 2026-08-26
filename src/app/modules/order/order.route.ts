@@ -34,6 +34,13 @@ router.patch(
   OrderController.markPayoutPaid,
 );
 
+router.post(
+  '/:id/missed-collection',
+  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
+  validateRequest(OrderValidation.reportMissedCollectionZodSchema),
+  OrderController.reportMissedCollection,
+);
+
 // Buyer/seller endpoints
 router.post(
   '/:productId/checkout',

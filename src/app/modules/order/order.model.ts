@@ -1,5 +1,10 @@
 import { Schema, model } from 'mongoose';
-import { ORDER_STATUS, PAYMENT_STATUS, PAYOUT_STATUS } from '../../../enums/order';
+import {
+  ORDER_OUTCOME,
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+  PAYOUT_STATUS,
+} from '../../../enums/order';
 import { IOrder } from './order.interface';
 
 const orderSchema = new Schema<IOrder>(
@@ -39,6 +44,11 @@ const orderSchema = new Schema<IOrder>(
     payoutTransferId: { type: String, unique: true, sparse: true },
     payoutReversalId: { type: String, unique: true, sparse: true },
     payoutFailureReason: { type: String },
+    outcome: { type: String, enum: Object.values(ORDER_OUTCOME) },
+    refundAmount: { type: Number, min: 0 },
+    handlingFeeCharged: { type: Number, min: 0 },
+    returnShippingPayer: { type: String, enum: ['seller', 'buyer'] },
+    missedCollectionAttempts: { type: Number, min: 0, default: 0 },
     status: {
       type: String,
       enum: Object.values(ORDER_STATUS),

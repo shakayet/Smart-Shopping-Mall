@@ -83,6 +83,10 @@ const createProductToDB = async (
     'name image avatar contact location country',
   );
   invalidateProductListCache();
+  void NotificationEvent.itemListed(
+    created.seller.toString(),
+    created._id.toString(),
+  );
   return toPublicProduct(result);
 };
 

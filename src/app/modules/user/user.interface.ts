@@ -32,7 +32,11 @@ export type IUser = {
   avatar?: string;
   provider?: 'local' | 'google';
   providerId?: string;
-  status: 'active' | 'ban';
+  status: 'active' | 'restricted' | 'suspended' | 'ban';
+  sellerStrikes: number;
+  missedCollections: number;
+  buyerUnjustifiedRejections: number;
+  statusReason?: string;
   verified: boolean;
   authentication?: IAuthentication;
   loginOtp?: ILoginOtp;

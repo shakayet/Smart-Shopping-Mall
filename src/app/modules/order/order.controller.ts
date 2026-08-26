@@ -65,9 +65,15 @@ const getAllOrdersForAdmin = catchAsync(async (req: Request, res: Response) => {
 
 const updateOrderStatus = catchAsync(async (req: Request, res: Response) => {
   const user = req.user as any;
-  const { status, note } = req.body;
+  const { status, note, outcome } = req.body;
 
-  const result = await OrderService.updateOrderStatus(req.params.id, status, note, user.id);
+  const result = await OrderService.updateOrderStatus(
+    req.params.id,
+    status,
+    note,
+    user.id,
+    outcome,
+  );
 
   sendResponse(res, {
     success: true,
@@ -104,6 +110,26 @@ const markPayoutPaid = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const reportMissedCollection = catchAsync(
+  async (req: Request, res: Response) => {
+    const user = req.user as any;
+    const result = await OrderService.reportMissedCollection(
+      req.params.id,
+      user.id,
+      req.body.note,
+    );
+
+    sendResponse(res, {
+      success: true,
+      statusCode: StatusCodes.OK,
+      message: result.cancelled
+        ? 'Order cancelled after repeated missed collections'
+        : 'Missed collection recorded',
+      data: result,
+    });
+  },
+);
+
 const cancelOrder = catchAsync(async (req: Request, res: Response) => {
   const user = req.user as any;
   const result = await OrderService.cancelOrder(req.params.id, user.id);
@@ -124,5 +150,6 @@ export const OrderController = {
   updateOrderStatus,
   updateOrderSchedule,
   markPayoutPaid,
+  reportMissedCollection,
   cancelOrder,
 };

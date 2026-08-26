@@ -26,9 +26,13 @@ export const createPaymentIntent = async (
 export const createRefund = async (
   paymentIntentId: string,
   idempotencyKey: string,
+  amount?: number,
 ) => {
   return stripeClient.refunds.create(
-    { payment_intent: paymentIntentId },
+    {
+      payment_intent: paymentIntentId,
+      ...(amount === undefined ? {} : { amount: toMinorUnits(amount) }),
+    },
     { idempotencyKey },
   );
 };

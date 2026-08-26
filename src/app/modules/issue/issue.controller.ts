@@ -7,11 +7,12 @@ import { JwtPayload } from 'jsonwebtoken';
 
 const createIssue = catchAsync(async (req: Request, res: Response) => {
   const user = req.user as JwtPayload;
-  const { productId, issueType, reason } = req.body;
+  const { productId, issueType, outcome, reason } = req.body;
 
   const result = await IssueService.createIssue(
     productId,
     issueType,
+    outcome,
     reason,
     user.id,
   );

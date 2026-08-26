@@ -60,7 +60,12 @@ const exchangeCode = catchAsync(async (req: Request, res: Response) => {
   }
 
   const user = await User.findById(grant.user);
-  if (!user || user.status === 'ban' || !user.verified) {
+  if (
+    !user ||
+    user.status === 'ban' ||
+    user.status === 'suspended' ||
+    !user.verified
+  ) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, 'Account is not available');
   }
 

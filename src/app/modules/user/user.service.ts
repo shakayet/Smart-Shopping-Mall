@@ -18,6 +18,10 @@ import { User } from './user.model';
 import { Order } from '../order/order.model';
 import { Product } from '../product/product.model';
 import { NotificationService } from '../notification/notification.service';
+import {
+  getFixedTestOtp,
+  isFixedTestOtpEmail,
+} from '../../../helpers/fixedTestOtp';
 
 const getAllUsersToDB = async (query: Record<string, unknown>) => {
   const userQuery = new QueryBuilder(User.find(), query)
@@ -91,14 +95,16 @@ const createUserToDB = async (payload: CreateUserPayload): Promise<IUser> => {
   }
 
   //send email
-  const otp = generateOTP();
+  const otp = getFixedTestOtp(createUser.email!) ?? generateOTP();
   const values = {
     name: createUser.name,
     otp: otp,
     email: createUser.email!,
   };
-  const createAccountTemplate = emailTemplate.createAccount(values);
-  emailHelper.sendEmail(createAccountTemplate);
+  if (!isFixedTestOtpEmail(createUser.email!)) {
+    const createAccountTemplate = emailTemplate.createAccount(values);
+    void emailHelper.sendEmail(createAccountTemplate);
+  }
 
   //save to DB
   const authentication = {

@@ -1,6 +1,7 @@
 import { Schema, model } from 'mongoose';
 import { IIssue } from './issue.interface';
 import { ISSUE_TYPE } from '../../../enums/issue';
+import { ORDER_OUTCOME } from '../../../enums/order';
 
 const issueSchema = new Schema<IIssue>(
   {
@@ -10,6 +11,11 @@ const issueSchema = new Schema<IIssue>(
     issueType: {
       type: String,
       enum: Object.values(ISSUE_TYPE),
+      required: true,
+    },
+    outcome: {
+      type: String,
+      enum: Object.values(ORDER_OUTCOME),
       required: true,
     },
     reason: { type: String, required: true },

@@ -360,7 +360,7 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
   "status": "available",
   "description": "Updated description"
 }</pre>
-    <p>Allowed fields: <code>name</code>, <code>brand</code>, <code>description</code>, <code>price</code>, <code>condition</code>, and <code>status</code> (<code>available | secured | sold</code>).</p>
+    <p>Allowed fields: <code>name</code>, <code>brand</code>, <code>description</code>, <code>price</code>, <code>condition</code>, and <code>status</code> (<code>available | secured | sold</code>). Responses may also contain the read-only policy state <code>under_review</code>.</p>
     <h4>200 response</h4>
     <pre>{
   "success": true,
@@ -434,8 +434,10 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     <h4>Body</h4>
     <pre>{
   "status": "collection_pending",
-  "note": "Collection scheduled for tomorrow"
+  "note": "Collection scheduled for tomorrow",
+  "outcome": null
 }</pre>
+    <p><code>outcome</code> is omitted for normal progress. A refund from <code>verification</code> uses <code>authentication_failed</code> or <code>counterfeit</code>. A refund from <code>ready_for_delivery</code> requires <code>not_as_described</code>, <code>condition_differs</code>, or <code>buyer_changed_mind</code>.</p>
     <h4>200 response</h4>
     <pre>{
   "success": true,
@@ -456,9 +458,9 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
       <tr><td><code>secured</code></td><td><code>collection_pending</code>, <code>cancelled</code></td><td>Cancellation may refund/relist.</td></tr>
       <tr><td><code>collection_pending</code></td><td><code>collected</code>, <code>cancelled</code></td><td>Cancellation may refund/relist.</td></tr>
       <tr><td><code>collected</code></td><td><code>verification</code></td><td>Item enters admin verification.</td></tr>
-      <tr><td><code>verification</code></td><td><code>payout_processing</code>, <code>refunded</code></td><td>Payout triggers Stripe transfer; refund relists.</td></tr>
-      <tr><td><code>payout_processing</code></td><td><code>ready_for_delivery</code></td><td>Proceed after payout succeeds.</td></tr>
-      <tr><td><code>ready_for_delivery</code></td><td><code>delivered</code></td><td>Product becomes sold.</td></tr>
+      <tr><td><code>verification</code></td><td><code>payout_processing</code>, <code>refunded</code></td><td><code>payout_processing</code> records authentication success. A failure refund moves the product under review.</td></tr>
+      <tr><td><code>payout_processing</code></td><td><code>ready_for_delivery</code></td><td>Seller payout must first be released.</td></tr>
+      <tr><td><code>ready_for_delivery</code></td><td><code>delivered</code>, <code>refunded</code></td><td>Delivery rejection requires a typed outcome and retains the handling fee.</td></tr>
       <tr><td><code>delivered</code></td><td><code>completed</code></td><td>Product remains sold.</td></tr>
       <tr><td><code>completed</code>, <code>refunded</code>, <code>cancelled</code></td><td>None</td><td>Terminal state.</td></tr>
     </tbody></table>
@@ -469,7 +471,7 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     <p><span class="badge">ADMIN / SUPER_ADMIN</span> Starts/retries the seller Stripe transfer. No request body.</p>
     <h4>Requirements</h4>
     <ul>
-      <li>Order status must be <code>verification</code> or <code>payout_processing</code>.</li>
+      <li>Order status must be <code>payout_processing</code>.</li>
       <li>Buyer payment must be <code>paid</code>.</li>
       <li>Seller must have a connected Stripe account with onboarding complete and payouts enabled.</li>
     </ul>
@@ -480,13 +482,20 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
   "data": {
     "_id": "66dd44444444444444444444",
     "orderNumber": "CLT-12345678901",
-    "status": "verification",
+    "status": "payout_processing",
     "payoutStatus": "paid",
     "payoutTransferId": "tr_...",
     "sellerPayout": 2816
   }
 }</pre>
-    <p class="small">Possible conflict: seller has no connected Stripe account, onboarding is incomplete, or payouts are disabled.</p>
+    <p class="small">Possible conflict: authentication has not passed, seller has no connected Stripe account, onboarding is incomplete, or payouts are disabled.</p>
+  </div>
+
+  <div class="endpoint">
+    <h3><span class="method post">POST</span><span class="path">/orders/:id/missed-collection</span></h3>
+    <p><span class="badge">ADMIN / SUPER_ADMIN</span> Records one failed seller collection while the order is <code>collection_pending</code>. The seller is notified. At the configured threshold (3 by default), the order is cancelled and fully refunded.</p>
+    <h4>Optional body</h4>
+    <pre>{ "note": "Seller did not answer at the agreed collection time" }</pre>
   </div>
 
   <h2>7. Issue management</h2>
@@ -505,6 +514,7 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
       "seller": { "_id": "66bb22222222222222222222", "name": "Seller Name", "email": "seller@example.com" },
       "admin": { "_id": "66aa11111111111111111111", "name": "Administrator", "email": "admin@example.com" },
       "issueType": "verification_failed",
+      "outcome": "counterfeit",
       "reason": "Serial number does not match the proof document",
       "resolved": false,
       "createdAt": "2026-08-03T09:00:00.000Z",
@@ -532,9 +542,10 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     <pre>{
   "productId": "66cc33333333333333333333",
   "issueType": "verification_failed",
+  "outcome": "authentication_failed",
   "reason": "Serial number does not match the proof document"
 }</pre>
-    <p>Allowed <code>issueType</code>: <code>buyer_refused</code> or <code>verification_failed</code>.</p>
+    <p>Allowed <code>issueType</code>: <code>buyer_refused</code> or <code>verification_failed</code>. Verification outcomes are <code>authentication_failed</code> and <code>counterfeit</code>; buyer-refusal outcomes are <code>not_as_described</code>, <code>condition_differs</code>, and <code>buyer_changed_mind</code>.</p>
     <h4>201 response</h4>
     <pre>{
   "success": true,
@@ -546,11 +557,12 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     "seller": "66bb22222222222222222222",
     "admin": "66aa11111111111111111111",
     "issueType": "verification_failed",
+    "outcome": "authentication_failed",
     "reason": "Serial number does not match the proof document",
     "resolved": false
   }
 }</pre>
-    <div class="warning">If the associated order was paid, creating an issue automatically refunds the buyer. If the seller was already paid, the Stripe transfer is reversed first. The seller is emailed.</div>
+    <div class="warning">Creating an issue applies its typed outcome immediately. Authentication failures are fully refunded. Delivery refusals retain the Closete handling fee. If the seller was already paid, the Stripe transfer is reversed first; the product moves to <code>under_review</code>.</div>
   </div>
 
   <div class="endpoint">

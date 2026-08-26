@@ -41,9 +41,17 @@ so mobile clients do not need public web callback pages. The app can query
 
 The platform uses UAE Express accounts and separate charges and transfers.
 Buyer funds remain on the platform while the item is verified. Moving an order
-to `payout_processing` creates the real, idempotent Stripe transfer to the
-seller; it fails safely if onboarding or payouts are incomplete. Refunds after
-a transfer reverse the seller transfer before refunding the buyer.
+to `payout_processing` records a successful authentication; operations then
+uses `PATCH /api/v1/orders/:id/payout` to create the real, idempotent Stripe
+transfer. Refunds after a transfer reverse the seller transfer before refunding
+the buyer.
+
+Policy refunds require a typed `outcome`. Authentication failures receive a
+full refund. Delivery rejections refund `sellerPayout`, retaining the stored
+`platformFee` as the Closete handling fee. Policy thresholds are configured by
+`SELLER_STRIKE_SUSPENSION_THRESHOLD`,
+`MISSED_COLLECTION_CANCELLATION_THRESHOLD`, and
+`BUYER_REJECTION_RESTRICTION_THRESHOLD`.
 
 Before launch, run a staging smoke test covering account creation, OTP login,
 Google OAuth exchange, simultaneous checkout attempts, successful payment,

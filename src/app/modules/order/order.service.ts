@@ -3,16 +3,19 @@ import { StatusCodes } from 'http-status-codes';
 import { JwtPayload } from 'jsonwebtoken';
 import config from '../../../config';
 import {
+  ORDER_OUTCOME,
   ORDER_STATUS,
   PAYMENT_STATUS,
   PAYOUT_STATUS,
 } from '../../../enums/order';
 import { USER_ROLES } from '../../../enums/user';
+import { ISSUE_TYPE } from '../../../enums/issue';
 import ApiError from '../../../errors/ApiError';
 import {
   cancelPaymentIntent,
   createPaymentIntent,
   createRefund,
+  reverseSellerTransfer,
 } from '../../../integrations/stripe';
 import {
   createSellerTransfer,
@@ -32,6 +35,25 @@ import { Issue } from '../issue/issue.model';
 import { buildOrderDetails } from './order.presenter';
 import { NotificationEvent } from '../notification/notification.event';
 import { synchronizeProductStatusMutation } from '../product/product-state-sync';
+import { UserPenaltyService } from '../user/user-penalty.service';
+
+const AUTHENTICATION_FAILURE_OUTCOMES = new Set<ORDER_OUTCOME>([
+  ORDER_OUTCOME.AUTHENTICATION_FAILED,
+  ORDER_OUTCOME.COUNTERFEIT,
+]);
+const DELIVERY_REJECTION_OUTCOMES = new Set<ORDER_OUTCOME>([
+  ORDER_OUTCOME.NOT_AS_DESCRIBED,
+  ORDER_OUTCOME.CONDITION_DIFFERS,
+  ORDER_OUTCOME.BUYER_CHANGED_MIND,
+]);
+
+export const refundAmountForOutcome = (
+  order: { price: number; sellerPayout: number },
+  outcome: ORDER_OUTCOME,
+) =>
+  DELIVERY_REJECTION_OUTCOMES.has(outcome)
+    ? order.sellerPayout
+    : order.price;
 
 const generateOrderNumber = () => {
   const random = Math.floor(100 + Math.random() * 900);
@@ -492,11 +514,108 @@ const getAllOrdersForAdmin = async (query: Record<string, unknown>) => {
   return { result, meta };
 };
 
+const resolvePolicyOutcome = (
+  currentStatus: ORDER_STATUS,
+  targetStatus: ORDER_STATUS,
+  requestedOutcome?: ORDER_OUTCOME,
+) => {
+  if (targetStatus !== ORDER_STATUS.REFUNDED) {
+    if (requestedOutcome) {
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        'An outcome can only be supplied for a policy refund',
+      );
+    }
+    return undefined;
+  }
+
+  if (currentStatus === ORDER_STATUS.VERIFICATION) {
+    const outcome =
+      requestedOutcome ?? ORDER_OUTCOME.AUTHENTICATION_FAILED;
+    if (!AUTHENTICATION_FAILURE_OUTCOMES.has(outcome)) {
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        'Verification refunds require authentication_failed or counterfeit',
+      );
+    }
+    return outcome;
+  }
+
+  if (currentStatus === ORDER_STATUS.READY_FOR_DELIVERY) {
+    if (!requestedOutcome || !DELIVERY_REJECTION_OUTCOMES.has(requestedOutcome)) {
+      throw new ApiError(
+        StatusCodes.BAD_REQUEST,
+        'Delivery refunds require a valid buyer rejection outcome',
+      );
+    }
+    return requestedOutcome;
+  }
+
+  if (requestedOutcome) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'The supplied outcome is not valid for this order state',
+    );
+  }
+  return undefined;
+};
+
+const refundOrderPayment = async (
+  order: InstanceType<typeof Order>,
+  refundAmount: number,
+) => {
+  if (order.payoutTransferId && order.payoutStatus === PAYOUT_STATUS.PAID) {
+    const reversal = await reverseSellerTransfer(
+      order.payoutTransferId,
+      order.sellerPayout,
+      order.orderNumber,
+    );
+    order.payoutReversalId = reversal.id;
+    order.payoutStatus = PAYOUT_STATUS.REVERSED;
+  }
+
+  if (order.payment.status === PAYMENT_STATUS.PAID) {
+    await createRefund(
+      order.payment.paymentIntentId,
+      `order-refund:${order._id.toString()}`,
+      refundAmount,
+    );
+    order.payment.status = PAYMENT_STATUS.REFUNDED;
+  }
+
+  order.refundAmount = refundAmount;
+  order.handlingFeeCharged = Number(
+    Math.max(0, order.price - refundAmount).toFixed(2),
+  );
+};
+
+const applyOutcomePenalty = async (
+  order: InstanceType<typeof Order>,
+  outcome: ORDER_OUTCOME,
+) => {
+  if (
+    AUTHENTICATION_FAILURE_OUTCOMES.has(outcome) ||
+    outcome === ORDER_OUTCOME.NOT_AS_DESCRIBED ||
+    outcome === ORDER_OUTCOME.CONDITION_DIFFERS
+  ) {
+    await UserPenaltyService.recordSellerOffence(
+      order.seller.toString(),
+      outcome,
+    );
+  } else if (outcome === ORDER_OUTCOME.BUYER_CHANGED_MIND) {
+    await UserPenaltyService.recordUnjustifiedBuyerRejection(
+      order.buyer.toString(),
+    );
+  }
+};
+
 const updateOrderStatus = async (
   orderId: string,
   targetStatus: ORDER_STATUS,
   note: string | undefined,
   adminId: string,
+  requestedOutcome?: ORDER_OUTCOME,
+  createPolicyIssue = true,
 ) => {
   const order = await Order.findById(orderId);
   if (!order) {
@@ -511,7 +630,44 @@ const updateOrderStatus = async (
     );
   }
 
-  if (REFUND_TRIGGER_STATUSES.includes(targetStatus)) {
+  const outcome = resolvePolicyOutcome(
+    order.status,
+    targetStatus,
+    requestedOutcome,
+  );
+
+  if (
+    targetStatus === ORDER_STATUS.READY_FOR_DELIVERY &&
+    order.payoutStatus !== PAYOUT_STATUS.PAID
+  ) {
+    throw new ApiError(
+      StatusCodes.CONFLICT,
+      'Release the seller payout before preparing the order for delivery',
+    );
+  }
+
+  if (outcome) {
+    await refundOrderPayment(
+      order,
+      refundAmountForOutcome(order, outcome),
+    );
+    order.outcome = outcome;
+    if (
+      outcome === ORDER_OUTCOME.AUTHENTICATION_FAILED ||
+      outcome === ORDER_OUTCOME.COUNTERFEIT ||
+      outcome === ORDER_OUTCOME.NOT_AS_DESCRIBED ||
+      outcome === ORDER_OUTCOME.CONDITION_DIFFERS
+    ) {
+      order.returnShippingPayer = 'seller';
+    }
+    await synchronizeProductStatusMutation(
+      Product.findByIdAndUpdate(order.product, {
+        $set: { status: 'under_review' },
+        $unset: { reservationExpiresAt: 1 },
+      }),
+      { productId: order.product.toString(), status: 'under_review' },
+    );
+  } else if (REFUND_TRIGGER_STATUSES.includes(targetStatus)) {
     if (order.payment.status === PAYMENT_STATUS.PAID) {
       await createRefund(
         order.payment.paymentIntentId,
@@ -526,10 +682,6 @@ const updateOrderStatus = async (
       }),
       { productId: order.product.toString(), status: 'available' },
     );
-  }
-
-  if (targetStatus === ORDER_STATUS.PAYOUT_PROCESSING) {
-    await paySeller(order);
   }
 
   if (
@@ -552,10 +704,51 @@ const updateOrderStatus = async (
   } as any);
 
   await order.save();
-  void NotificationEvent.orderStatusChanged(order, targetStatus);
+  if (outcome) {
+    if (createPolicyIssue) {
+      await Issue.findOneAndUpdate(
+        { product: order.product, resolved: false },
+        {
+          $setOnInsert: {
+            product: order.product,
+            buyer: order.buyer,
+            seller: order.seller,
+            issueType: AUTHENTICATION_FAILURE_OUTCOMES.has(outcome)
+              ? ISSUE_TYPE.VERIFICATION_FAILED
+              : ISSUE_TYPE.BUYER_REFUSED,
+            outcome,
+            reason: note?.trim() || outcome.replace(/_/g, ' '),
+            admin: adminId,
+            resolved: false,
+          },
+        },
+        { upsert: true },
+      );
+    }
+    await applyOutcomePenalty(order, outcome);
+    if (AUTHENTICATION_FAILURE_OUTCOMES.has(outcome)) {
+      void NotificationEvent.authenticationFailed(
+        order,
+        outcome as
+          | ORDER_OUTCOME.AUTHENTICATION_FAILED
+          | ORDER_OUTCOME.COUNTERFEIT,
+      );
+    } else {
+      void NotificationEvent.deliveryRejected(
+        order,
+        outcome as
+          | ORDER_OUTCOME.NOT_AS_DESCRIBED
+          | ORDER_OUTCOME.CONDITION_DIFFERS
+          | ORDER_OUTCOME.BUYER_CHANGED_MIND,
+      );
+    }
+  } else {
+    void NotificationEvent.orderStatusChanged(order, targetStatus);
+  }
   if (
-    targetStatus === ORDER_STATUS.CANCELLED ||
-    targetStatus === ORDER_STATUS.REFUNDED
+    !outcome &&
+    (targetStatus === ORDER_STATUS.CANCELLED ||
+      targetStatus === ORDER_STATUS.REFUNDED)
   ) {
     void NotificationEvent.wishlistAvailabilityChanged(
       order.product.toString(),
@@ -568,13 +761,10 @@ const updateOrderStatus = async (
 
 const paySeller = async (order: InstanceType<typeof Order>) => {
   if (order.payoutStatus === PAYOUT_STATUS.PAID) return order;
-  if (
-    order.status !== ORDER_STATUS.VERIFICATION &&
-    order.status !== ORDER_STATUS.PAYOUT_PROCESSING
-  ) {
+  if (order.status !== ORDER_STATUS.PAYOUT_PROCESSING) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
-      'Seller payout is only available after verification',
+      'Seller payout is only available after authentication passes',
     );
   }
   if (order.payment.status !== PAYMENT_STATUS.PAID) {
@@ -626,6 +816,69 @@ const markPayoutPaid = async (orderId: string) => {
   }
 
   return paySeller(order);
+};
+
+const reportMissedCollection = async (
+  orderId: string,
+  adminId: string,
+  note?: string,
+) => {
+  const order = await Order.findById(orderId);
+  if (!order) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Order not found');
+  }
+  if (order.status !== ORDER_STATUS.COLLECTION_PENDING) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'A missed collection can only be recorded while collection is pending',
+    );
+  }
+
+  order.missedCollectionAttempts =
+    Number(order.missedCollectionAttempts ?? 0) + 1;
+  if (note?.trim()) order.note = note.trim();
+  await order.save();
+  await UserPenaltyService.recordMissedCollection(order.seller.toString());
+  void NotificationEvent.collectionMissed(
+    order,
+    order.missedCollectionAttempts,
+  );
+
+  const threshold =
+    config.penaltyPolicy.missedCollectionCancellationThreshold;
+  if (order.missedCollectionAttempts < threshold) {
+    return {
+      order,
+      cancelled: false,
+      attemptsRemaining: threshold - order.missedCollectionAttempts,
+    };
+  }
+
+  await refundOrderPayment(order, order.price);
+  order.outcome = ORDER_OUTCOME.SELLER_UNAVAILABLE;
+  order.status = ORDER_STATUS.CANCELLED;
+  order.statusHistory.push({
+    status: ORDER_STATUS.CANCELLED,
+    note: note?.trim() || 'Cancelled after repeated missed collections',
+    changedAt: new Date(),
+    changedBy: adminId,
+  } as any);
+  await order.save();
+
+  await synchronizeProductStatusMutation(
+    Product.findByIdAndUpdate(order.product, {
+      $set: { status: 'available' },
+      $unset: { buyer: 1, reservationExpiresAt: 1 },
+    }),
+    { productId: order.product.toString(), status: 'available' },
+  );
+  void NotificationEvent.wishlistAvailabilityChanged(
+    order.product.toString(),
+    true,
+    `${order._id.toString()}:missed-collection-cancelled`,
+  );
+
+  return { order, cancelled: true, attemptsRemaining: 0 };
 };
 
 const cancelOrder = async (orderId: string, buyerId: string) => {
@@ -788,6 +1041,7 @@ export const OrderService = {
   getAllOrdersForAdmin,
   updateOrderStatus,
   markPayoutPaid,
+  reportMissedCollection,
   cancelOrder,
   expirePendingOrders,
 };

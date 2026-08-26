@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars */
 export enum NOTIFICATION_TYPE {
+  ITEM_LISTED = 'item_listed',
   ORDER_SECURED = 'order_secured',
   ITEM_RESERVED = 'item_reserved',
   COLLECTION_PENDING = 'collection_pending',
@@ -21,6 +22,10 @@ export enum NOTIFICATION_TYPE {
   WISHLIST_ITEM_UNAVAILABLE = 'wishlist_item_unavailable',
   WISHLIST_ITEM_AVAILABLE = 'wishlist_item_available',
   SELLER_ONBOARDING_REQUIRED = 'seller_onboarding_required',
+  AUTHENTICATION_PASSED = 'authentication_passed',
+  AUTHENTICATION_FAILED = 'authentication_failed',
+  COLLECTION_MISSED = 'collection_missed',
+  DELIVERY_CANCELLED = 'delivery_cancelled',
 }
 
 export enum DEVICE_PLATFORM {

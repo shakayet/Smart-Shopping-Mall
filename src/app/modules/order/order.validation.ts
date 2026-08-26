@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ORDER_STATUS } from '../../../enums/order';
+import { ORDER_OUTCOME, ORDER_STATUS } from '../../../enums/order';
 
 const checkoutZodSchema = z.object({
   body: z.object({
@@ -18,6 +18,13 @@ const updateOrderStatusZodSchema = z.object({
       required_error: 'Status is required',
     }),
     note: z.string().optional(),
+    outcome: z.nativeEnum(ORDER_OUTCOME).optional(),
+  }),
+});
+
+const reportMissedCollectionZodSchema = z.object({
+  body: z.object({
+    note: z.string().trim().max(1000).optional(),
   }),
 });
 
@@ -53,4 +60,5 @@ export const OrderValidation = {
   checkoutZodSchema,
   updateOrderStatusZodSchema,
   updateOrderScheduleZodSchema,
+  reportMissedCollectionZodSchema,
 };

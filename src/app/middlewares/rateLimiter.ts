@@ -1,11 +1,15 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request } from 'express';
+import { isFixedTestOtpEmail } from '../../helpers/fixedTestOtp';
 
 const extractEmailForRateLimitKey = (req: Request): string => {
   const body = req.body as Record<string, unknown> | undefined | null;
   const email = body?.email;
-  return typeof email === 'string' ? email.toLowerCase() : '';
+  return typeof email === 'string' ? email.toLowerCase().trim() : '';
 };
+
+const skipFixedTestOtp = (req: Request) =>
+  isFixedTestOtpEmail(extractEmailForRateLimitKey(req));
 
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -34,6 +38,7 @@ export const otpGenerationLimiter = rateLimit({
   limit: 15, // Max 15 OTP generation / email-request calls per IP per hour
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipFixedTestOtp,
   keyGenerator: (req: Request) => {
     const email = extractEmailForRateLimitKey(req);
     return `${ipKeyGenerator(req.ip ?? 'unknown')}:${email}`;
@@ -50,6 +55,7 @@ export const otpVerificationLimiter = rateLimit({
   limit: 8, // Max 8 verification attempts per IP per 10 minutes
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipFixedTestOtp,
   keyGenerator: (req: Request) => {
     const email = extractEmailForRateLimitKey(req);
     return `${ipKeyGenerator(req.ip ?? 'unknown')}:${email}`;

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ORDER_STATUS } from '../../../enums/order';
+import { ORDER_OUTCOME, ORDER_STATUS } from '../../../enums/order';
 import { USER_ROLES } from '../../../enums/user';
 import { ORDER_STATUS_TRANSITIONS } from './order.constant';
 
@@ -127,11 +127,13 @@ export const getOrderProgress = (
 export const getVerificationState = (
   status: ORDER_STATUS,
   verificationFailed: boolean,
+  wasVerified = false,
 ) => {
   if (verificationFailed) {
     return { status: 'failed', label: 'Verification failed', isVerified: false };
   }
   if (
+    wasVerified ||
     status === ORDER_STATUS.PAYOUT_PROCESSING ||
     status === ORDER_STATUS.READY_FOR_DELIVERY ||
     status === ORDER_STATUS.DELIVERED ||
@@ -206,7 +208,12 @@ export const buildOrderDetails = ({
     : [];
   const verification = getVerificationState(
     status,
-    issue?.issueType === 'verification_failed',
+    issue?.issueType === 'verification_failed' ||
+      value.outcome === ORDER_OUTCOME.AUTHENTICATION_FAILED ||
+      value.outcome === ORDER_OUTCOME.COUNTERFEIT,
+    value.outcome === ORDER_OUTCOME.NOT_AS_DESCRIBED ||
+      value.outcome === ORDER_OUTCOME.CONDITION_DIFFERS ||
+      value.outcome === ORDER_OUTCOME.BUYER_CHANGED_MIND,
   );
   const features = Array.isArray(product.features) ? product.features : [];
   const hasProduct = Boolean(idOf(product));
@@ -283,12 +290,20 @@ export const buildOrderDetails = ({
       status: value.payment?.status ?? null,
     },
     payoutStatus: value.payoutStatus,
+    policy: {
+      outcome: value.outcome ?? null,
+      refundAmount: value.refundAmount ?? null,
+      handlingFeeCharged: value.handlingFeeCharged ?? null,
+      returnShippingPayer: value.returnShippingPayer ?? null,
+      missedCollectionAttempts: Number(value.missedCollectionAttempts ?? 0),
+    },
     issue: {
       hasOpenIssue,
       openIssue: hasOpenIssue
         ? {
             _id: idOf(issue),
             issueType: issue.issueType,
+            outcome: issue.outcome ?? null,
             reason: issue.reason,
             createdAt: issue.createdAt,
           }
@@ -319,6 +334,16 @@ export const buildOrderDetails = ({
         method: 'POST',
         endpoint: '/api/v1/issues',
         payload: { productId: idOf(product) },
+      },
+      reportMissedCollection: {
+        enabled: isAdmin && status === ORDER_STATUS.COLLECTION_PENDING,
+        disabledReason: !isAdmin
+          ? 'Admin access is required'
+          : status !== ORDER_STATUS.COLLECTION_PENDING
+            ? 'Collection must be pending'
+            : null,
+        method: 'POST',
+        endpoint: `/api/v1/orders/${idOf(value)}/missed-collection`,
       },
       cancelOrder: {
         enabled:

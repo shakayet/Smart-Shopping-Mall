@@ -183,6 +183,25 @@ Use the push `data.screen` value for navigation:
 - `wishlist`: open saved items.
 - `seller_onboarding`: open Stripe seller onboarding.
 
+## Policy notification events
+
+The order lifecycle emits the document-defined buyer and seller copy using
+these notification types:
+
+- `item_listed`: seller listing is live.
+- `order_secured` / `item_reserved`: buyer payment confirmed.
+- `wishlist_item_saved`: buyer saved an item.
+- `authentication_passed`: item passed authentication.
+- `authentication_failed`: item failed authentication or was counterfeit.
+- `collection_missed`: seller missed a collection attempt.
+- `delivery_cancelled`: delivery was rejected for a typed policy outcome.
+- `item_delivered`: admin marked the order delivered.
+- `payout_paid`: operations released the seller payout.
+
+Policy notifications include `data.outcome` where applicable. Supported values
+are `authentication_failed`, `counterfeit`, `not_as_described`,
+`condition_differs`, and `buyer_changed_mind`.
+
 Do not place FCM registration tokens in logs, analytics, crash reports, URLs,
 or local plaintext debug output.
 

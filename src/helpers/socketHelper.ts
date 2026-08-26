@@ -36,7 +36,7 @@ const socket = (io: Server) => {
       }
       const eligibleUser = await User.exists({
         _id: payload.id,
-        status: 'active',
+        status: { $in: ['active', 'restricted'] },
         verified: true,
       });
       if (!eligibleUser) return next(new Error('Authentication failed'));

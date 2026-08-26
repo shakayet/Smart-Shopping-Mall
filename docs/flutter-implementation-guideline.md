@@ -890,7 +890,7 @@ class ProductModel with _$ProductModel {
     required double price,
     required String condition,
     String? proofOfPurchase,
-    required ProductStatus status,  // 'available' | 'secured' | 'sold'
+    required ProductStatus status,  // also receives read-only 'under_review'
     required String seller,       // ObjectId string
     required int orderId,
     String? buyer,
@@ -899,7 +899,7 @@ class ProductModel with _$ProductModel {
   factory ProductModel.fromJson(Map<String, dynamic> json) => _$ProductModelFromJson(json);
 }
 
-enum ProductStatus { available, secured, sold }
+enum ProductStatus { available, secured, sold, underReview }
 ```
 
 #### List Endpoint: `GET /products`
@@ -912,7 +912,7 @@ Query params (all optional):
 - `searchTerm`: string (NOT `search`) — searched against name / brand / description
 - `brand`: string (exact match)
 - `sort`: e.g. `-price` (DESC) or `createdAt` (ASC); default `-createdAt`
-- `status`: `available` (default) | `secured` | `sold`
+- `status`: `available` (default) | `secured` | `sold` | `under_review` (policy review; read-only to clients)
 
 **UI Contract:**
 - GridView (2 columns) with `Shimmer` loading placeholders while fetching
@@ -1002,7 +1002,7 @@ collection_pending → [collected, cancelled]
 collected        → [verification]
 verification     → [payout_processing, refunded]
 payout_processing → [ready_for_delivery]
-ready_for_delivery → [delivered]
+ready_for_delivery → [delivered, refunded]
 delivered        → [completed]
 completed        → [] (terminal)
 refunded         → [] (terminal)
@@ -1040,7 +1040,7 @@ extension OrderStatusX on OrderStatus {
     OrderStatus.collected => [OrderStatus.verification],
     OrderStatus.verification => [OrderStatus.payoutProcessing, OrderStatus.refunded],
     OrderStatus.payoutProcessing => [OrderStatus.readyForDelivery],
-    OrderStatus.readyForDelivery => [OrderStatus.delivered],
+    OrderStatus.readyForDelivery => [OrderStatus.delivered, OrderStatus.refunded],
     OrderStatus.delivered => [OrderStatus.completed],
     _ => const [],
   };
@@ -1165,7 +1165,7 @@ Mobile user-facing: "Contact Support" CTA → email support. Issue endpoints are
 
 | Endpoint | Body |
 |----------|------|
-| `POST /issues` | `{ productId:string, issueType: 'buyer_refused'\|'verification_failed', reason:string }` (NOT orderId-based) |
+| `POST /issues` | `{ productId:string, issueType: 'buyer_refused'\|'verification_failed', outcome:string, reason:string }` (NOT orderId-based; outcome must match the issue type) |
 | `PATCH /issues/:id/resolve` | `{ action: 'delete'\|'make_available' }` (NOT resolution=approved/rejected) |
 
 ---
@@ -1725,9 +1725,10 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 | GET | `/orders/:id` | USER (party to order) + ADMIN | — | Sanitized UI-ready detail with product details/currency/verification, normalized parties, schedule, progress, delivery/issue state, and role-aware `actions`. |
 | POST | `/orders/:id/cancel` | USER (buyer only) | — | Cancelled order. Allowed from `pending_payment` or `secured`. Auto-triggers Stripe refund when applicable + product relisted. |
 | GET | `/orders/admin/all` | ADMIN, SUPER_ADMIN | Query: page/limit/status/filters | Admin full orders list |
-| PATCH | `/orders/:id/status` | ADMIN, SUPER_ADMIN | JSON: `{ status: OrderStatus_snake_case, note?: string }` | Updated order. State machine validates transition. Triggers Stripe refund if target ∈ {cancelled, refunded}. |
+| PATCH | `/orders/:id/status` | ADMIN, SUPER_ADMIN | JSON: `{ status: OrderStatus_snake_case, note?: string, outcome?: 'authentication_failed'\|'counterfeit'\|'not_as_described'\|'condition_differs'\|'buyer_changed_mind' }` | Updated order. Policy refunds require the outcome that matches the current workflow step. |
 | PATCH | `/orders/:id/schedule` | ADMIN, SUPER_ADMIN | JSON: `{ pickupWindow?: { start: ISO-8601, end: ISO-8601 }, estimatedDeliveryAt?: ISO-8601, note?: string }` | Updated UI-ready order detail. Delivery must be after pickup; terminal orders cannot be rescheduled. |
-| PATCH | `/orders/:id/payout` | ADMIN, SUPER_ADMIN | — | Marks seller payout as paid (manual payout button for ops). Min status required: payout_processing or later. |
+| PATCH | `/orders/:id/payout` | ADMIN, SUPER_ADMIN | — | Releases the seller payout. Order status must be `payout_processing`. |
+| POST | `/orders/:id/missed-collection` | ADMIN, SUPER_ADMIN | JSON: `{ note?: string }` | Records a missed seller collection; cancels and fully refunds at the configured threshold. |
 
 ### 17.7 AI (`/ai`)
 
@@ -1739,7 +1740,7 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 
 | Method | Path | Auth | Body |
 |--------|------|------|------|
-| POST | `/issues` | ADMIN, SUPER_ADMIN | JSON: `{ productId:string ⚠️ (not orderId), issueType: 'buyer_refused'\|'verification_failed', reason:string }` |
+| POST | `/issues` | ADMIN, SUPER_ADMIN | JSON: `{ productId:string ⚠️ (not orderId), issueType: 'buyer_refused'\|'verification_failed', outcome:'authentication_failed'\|'counterfeit'\|'not_as_described'\|'condition_differs'\|'buyer_changed_mind', reason:string }` |
 | GET | `/issues` | ADMIN, SUPER_ADMIN | Query: page/limit |
 | GET | `/issues/:id` | ADMIN, SUPER_ADMIN | — |
 | PATCH | `/issues/:id/resolve` | ADMIN, SUPER_ADMIN | JSON: `{ action: 'delete' \| 'make_available' ⚠️ }` |

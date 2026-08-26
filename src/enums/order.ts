@@ -27,3 +27,16 @@ export enum PAYOUT_STATUS {
   FAILED = 'failed',
   REVERSED = 'reversed',
 }
+
+/**
+ * Typed operational outcomes that carry refund, notification, and account
+ * standing rules beyond a normal order status transition.
+ */
+export enum ORDER_OUTCOME {
+  AUTHENTICATION_FAILED = 'authentication_failed',
+  COUNTERFEIT = 'counterfeit',
+  SELLER_UNAVAILABLE = 'seller_unavailable',
+  NOT_AS_DESCRIBED = 'not_as_described',
+  CONDITION_DIFFERS = 'condition_differs',
+  BUYER_CHANGED_MIND = 'buyer_changed_mind',
+}

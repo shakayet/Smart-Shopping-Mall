@@ -23,6 +23,11 @@ import generateOTP from '../../../util/generateOTP';
 import { ResetToken } from '../resetToken/resetToken.model';
 import { User } from '../user/user.model';
 import { ILoginOtp } from '../user/user.interface';
+import {
+  getFixedTestOtp,
+  isFixedTestOtpEmail,
+  isValidFixedTestOtp,
+} from '../../../helpers/fixedTestOtp';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds between requests / resends
@@ -75,7 +80,7 @@ function ensureAccountStatus<T extends IAccountStatus>(
       'Please verify your account, then try to login again',
     );
   }
-  if (user.status === 'ban') {
+  if (user.status === 'ban' || user.status === 'suspended') {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'You don’t have permission to access this content. It looks like your account has been deactivated.',
@@ -166,34 +171,38 @@ const requestLoginOtpToDB = async (payload: IRequestLoginOtp) => {
   ensureAccountStatus(user, { requireVerified: false, allowUser: true });
   ensurePasswordlessUser(user);
 
-  enforceResendCooldown(user.loginOtp);
+  if (!isFixedTestOtpEmail(email)) enforceResendCooldown(user.loginOtp);
 
-  const plainOtp = generateOTP();
+  const plainOtp = getFixedTestOtp(email) ?? generateOTP();
   const otpDoc = await buildLoginOtpDoc(plainOtp, {
     resentCount: user.loginOtp?.resentCount ?? 0,
   });
 
   await User.findByIdAndUpdate(user._id, { $set: { loginOtp: otpDoc } });
 
-  try {
-    const emailData = emailTemplate.loginOtp({
-      email: user.email,
-      name: user.name,
-      otp: plainOtp,
-    });
-    await emailHelper.sendEmail(emailData);
-    logger.info(
-      `[AUTH] Passwordless OTP generated & emailed to ${email} (expires ${OTP_TTL_MS / 60000}m)`,
-    );
-  } catch (err) {
-    errorLogger.error(`[AUTH] Failed to send login OTP email to ${email}`, err);
-    if (createdPendingUser) {
-      await User.deleteOne({ _id: user._id, verified: false });
+  if (isFixedTestOtpEmail(email)) {
+    logger.warn(`[AUTH] Fixed development OTP issued for ${email}`);
+  } else {
+    try {
+      const emailData = emailTemplate.loginOtp({
+        email: user.email,
+        name: user.name,
+        otp: plainOtp,
+      });
+      await emailHelper.sendEmail(emailData);
+      logger.info(
+        `[AUTH] Passwordless OTP generated & emailed to ${email} (expires ${OTP_TTL_MS / 60000}m)`,
+      );
+    } catch (err) {
+      errorLogger.error(`[AUTH] Failed to send login OTP email to ${email}`, err);
+      if (createdPendingUser) {
+        await User.deleteOne({ _id: user._id, verified: false });
+      }
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'Failed to send sign-in code. Please try again later.',
+      );
     }
-    throw new ApiError(
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      'Failed to send sign-in code. Please try again later.',
-    );
   }
 
   return {
@@ -216,9 +225,9 @@ const resendLoginOtpToDB = async (payload: IResendLoginOtp) => {
   }
   ensureAccountStatus(user, { requireVerified: false, allowUser: true });
   ensurePasswordlessUser(user);
-  enforceResendCooldown(user.loginOtp);
+  if (!isFixedTestOtpEmail(email)) enforceResendCooldown(user.loginOtp);
 
-  const plainOtp = generateOTP();
+  const plainOtp = getFixedTestOtp(email) ?? generateOTP();
   const nextResentCount = (user.loginOtp?.resentCount ?? 0) + 1;
   const otpDoc = await buildLoginOtpDoc(plainOtp, {
     resentCount: nextResentCount,
@@ -226,25 +235,29 @@ const resendLoginOtpToDB = async (payload: IResendLoginOtp) => {
 
   await User.findByIdAndUpdate(user._id, { $set: { loginOtp: otpDoc } });
 
-  try {
-    const emailData = emailTemplate.loginOtp({
-      email: user.email,
-      name: user.name,
-      otp: plainOtp,
-    });
-    await emailHelper.sendEmail(emailData);
-    logger.info(
-      `[AUTH] Resend login OTP emailed to ${email} (resentCount=${nextResentCount})`,
-    );
-  } catch (err) {
-    errorLogger.error(
-      `[AUTH] Failed to resend login OTP email to ${email}`,
-      err,
-    );
-    throw new ApiError(
-      StatusCodes.INTERNAL_SERVER_ERROR,
-      'Failed to send sign-in code. Please try again later.',
-    );
+  if (isFixedTestOtpEmail(email)) {
+    logger.warn(`[AUTH] Fixed development OTP reissued for ${email}`);
+  } else {
+    try {
+      const emailData = emailTemplate.loginOtp({
+        email: user.email,
+        name: user.name,
+        otp: plainOtp,
+      });
+      await emailHelper.sendEmail(emailData);
+      logger.info(
+        `[AUTH] Resend login OTP emailed to ${email} (resentCount=${nextResentCount})`,
+      );
+    } catch (err) {
+      errorLogger.error(
+        `[AUTH] Failed to resend login OTP email to ${email}`,
+        err,
+      );
+      throw new ApiError(
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'Failed to send sign-in code. Please try again later.',
+      );
+    }
   }
 
   return {
@@ -269,6 +282,19 @@ const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
   }
   ensureAccountStatus(user, { requireVerified: false, allowUser: true });
   ensurePasswordlessUser(user);
+
+  if (isValidFixedTestOtp(email, oneTimeCode)) {
+    const authenticated = await User.findByIdAndUpdate(
+      user._id,
+      { $set: { verified: true } },
+      { new: true },
+    );
+    if (!authenticated) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
+    }
+    logger.warn(`[AUTH] Fixed development OTP accepted for ${email}`);
+    return buildAuthTokens(authenticated);
+  }
 
   const otp = user.loginOtp;
   if (!otp || !otp.hashedCode) {
@@ -380,18 +406,23 @@ const verifyLoginOtpToDB = async (payload: IVerifyLoginOtp) => {
 
 // ----------------- EXISTING FORGET / RESET / VERIFY-EMAIL ETC -----------------
 const forgetPasswordToDB = async (email: string) => {
-  const isExistUser = await User.isExistUserByEmail(email);
+  const normalizedEmail = email.toLowerCase().trim();
+  const isExistUser = await User.isExistUserByEmail(normalizedEmail);
   if (!isExistUser) {
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
 
-  const otp = generateOTP();
+  const otp = getFixedTestOtp(normalizedEmail) ?? generateOTP();
   const value = {
     otp,
     email: isExistUser.email,
   };
-  const forgetPassword = emailTemplate.resetPassword(value);
-  await emailHelper.sendEmail(forgetPassword);
+  if (!isFixedTestOtpEmail(normalizedEmail)) {
+    const forgetPassword = emailTemplate.resetPassword(value);
+    await emailHelper.sendEmail(forgetPassword);
+  } else {
+    logger.warn(`[AUTH] Fixed development recovery OTP issued for ${normalizedEmail}`);
+  }
 
   const authentication = {
     oneTimeCode: otp,
@@ -401,7 +432,8 @@ const forgetPasswordToDB = async (email: string) => {
 };
 
 const verifyEmailToDB = async (payload: IVerifyEmail) => {
-  const { email, oneTimeCode } = payload;
+  const email = payload.email.toLowerCase().trim();
+  const { oneTimeCode } = payload;
   const isExistUser = await User.findOne({ email }).select('+authentication');
   if (!isExistUser) {
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
@@ -414,12 +446,20 @@ const verifyEmailToDB = async (payload: IVerifyEmail) => {
     );
   }
 
-  if (isExistUser.authentication?.oneTimeCode !== oneTimeCode) {
+  const fixedTestOtpMatches = isValidFixedTestOtp(email, oneTimeCode);
+  if (
+    !fixedTestOtpMatches &&
+    isExistUser.authentication?.oneTimeCode !== oneTimeCode
+  ) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'You provided wrong otp');
   }
 
   const date = new Date();
-  if (date > isExistUser.authentication?.expireAt) {
+  if (
+    !fixedTestOtpMatches &&
+    (!isExistUser.authentication?.expireAt ||
+      date > isExistUser.authentication.expireAt)
+  ) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'Otp already expired, Please try again',
@@ -567,15 +607,21 @@ const resendOtpToDB = async (email: string) => {
     };
   }
 
-  const otp = generateOTP();
+  const otp = getFixedTestOtp(normalizedEmail) ?? generateOTP();
   const values = {
     name: isExistUser.name,
     otp,
     email: isExistUser.email!,
   };
 
-  const resendTemplate = emailTemplate.createAccount(values);
-  await emailHelper.sendEmail(resendTemplate);
+  if (!isFixedTestOtpEmail(normalizedEmail)) {
+    const resendTemplate = emailTemplate.createAccount(values);
+    await emailHelper.sendEmail(resendTemplate);
+  } else {
+    logger.warn(
+      `[AUTH] Fixed development account-verification OTP reissued for ${normalizedEmail}`,
+    );
+  }
 
   const authentication = {
     oneTimeCode: otp,

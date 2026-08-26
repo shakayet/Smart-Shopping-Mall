@@ -111,9 +111,13 @@ const userSchema = new Schema<IUser, UserModal>(
     },
     status: {
       type: String,
-      enum: ['active', 'ban'],
+      enum: ['active', 'restricted', 'suspended', 'ban'],
       default: 'active',
     },
+    sellerStrikes: { type: Number, min: 0, default: 0 },
+    missedCollections: { type: Number, min: 0, default: 0 },
+    buyerUnjustifiedRejections: { type: Number, min: 0, default: 0 },
+    statusReason: { type: String, maxlength: 500 },
     verified: {
       type: Boolean,
       default: false,

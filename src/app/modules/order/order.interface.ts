@@ -1,5 +1,10 @@
 import { Types } from 'mongoose';
-import { ORDER_STATUS, PAYMENT_STATUS, PAYOUT_STATUS } from '../../../enums/order';
+import {
+  ORDER_OUTCOME,
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+  PAYOUT_STATUS,
+} from '../../../enums/order';
 
 export type IDeliveryDetails = {
   address: string;
@@ -42,6 +47,11 @@ export type IOrder = {
   payoutTransferId?: string;
   payoutReversalId?: string;
   payoutFailureReason?: string;
+  outcome?: ORDER_OUTCOME;
+  refundAmount?: number;
+  handlingFeeCharged?: number;
+  returnShippingPayer?: 'seller' | 'buyer';
+  missedCollectionAttempts: number;
   status: ORDER_STATUS;
   statusHistory: IOrderStatusHistory[];
 }

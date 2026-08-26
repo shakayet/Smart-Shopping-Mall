@@ -24,7 +24,7 @@ const productSchema = new Schema<IProduct>(
     proofOfPurchase: { type: String, default: null },
     status: {
       type: String,
-      enum: ['available', 'secured', 'sold'],
+      enum: ['available', 'secured', 'sold', 'under_review'],
       default: 'available',
     },
     wishlistCount: {
