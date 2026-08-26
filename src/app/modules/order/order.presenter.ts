@@ -213,7 +213,8 @@ export const buildOrderDetails = ({
       value.outcome === ORDER_OUTCOME.COUNTERFEIT,
     value.outcome === ORDER_OUTCOME.NOT_AS_DESCRIBED ||
       value.outcome === ORDER_OUTCOME.CONDITION_DIFFERS ||
-      value.outcome === ORDER_OUTCOME.BUYER_CHANGED_MIND,
+      value.outcome === ORDER_OUTCOME.BUYER_CHANGED_MIND ||
+      value.outcome === ORDER_OUTCOME.OTHERS,
   );
   const features = Array.isArray(product.features) ? product.features : [];
   const hasProduct = Boolean(idOf(product));

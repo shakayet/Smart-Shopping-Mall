@@ -39,4 +39,5 @@ export enum ORDER_OUTCOME {
   NOT_AS_DESCRIBED = 'not_as_described',
   CONDITION_DIFFERS = 'condition_differs',
   BUYER_CHANGED_MIND = 'buyer_changed_mind',
+  OTHERS = 'others',
 }

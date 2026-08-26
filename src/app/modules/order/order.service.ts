@@ -45,6 +45,7 @@ const DELIVERY_REJECTION_OUTCOMES = new Set<ORDER_OUTCOME>([
   ORDER_OUTCOME.NOT_AS_DESCRIBED,
   ORDER_OUTCOME.CONDITION_DIFFERS,
   ORDER_OUTCOME.BUYER_CHANGED_MIND,
+  ORDER_OUTCOME.OTHERS,
 ]);
 
 export const refundAmountForOutcome = (
@@ -739,7 +740,8 @@ const updateOrderStatus = async (
         outcome as
           | ORDER_OUTCOME.NOT_AS_DESCRIBED
           | ORDER_OUTCOME.CONDITION_DIFFERS
-          | ORDER_OUTCOME.BUYER_CHANGED_MIND,
+          | ORDER_OUTCOME.BUYER_CHANGED_MIND
+          | ORDER_OUTCOME.OTHERS,
       );
     }
   } else {

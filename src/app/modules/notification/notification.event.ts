@@ -179,7 +179,8 @@ const deliveryRejected = async (
   outcome:
     | ORDER_OUTCOME.NOT_AS_DESCRIBED
     | ORDER_OUTCOME.CONDITION_DIFFERS
-    | ORDER_OUTCOME.BUYER_CHANGED_MIND,
+    | ORDER_OUTCOME.BUYER_CHANGED_MIND
+    | ORDER_OUTCOME.OTHERS,
 ) => {
   const messages = {
     [ORDER_OUTCOME.NOT_AS_DESCRIBED]: {
@@ -201,6 +202,13 @@ const deliveryRejected = async (
       buyerBody:
         'Your order has been cancelled at delivery. Your payment has been refunded, less the applicable Closete handling fee.',
       sellerBody: 'The buyer chose not to proceed with the purchase.',
+    },
+    [ORDER_OUTCOME.OTHERS]: {
+      buyerTitle: 'Delivery cancelled',
+      buyerBody:
+        'Your order has been cancelled at delivery. Your payment has been refunded, less the applicable Closete handling fee.',
+      sellerBody:
+        'The buyer rejected your item at delivery. Our team will contact you regarding the next steps.',
     },
   } as const;
   const message = messages[outcome];

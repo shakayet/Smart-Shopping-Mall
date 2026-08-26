@@ -455,7 +455,7 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     <h4>Allowed transitions</h4>
     <table><thead><tr><th>Current status</th><th>Allowed next status</th><th>Side effect</th></tr></thead><tbody>
       <tr><td><code>pending_payment</code></td><td><code>secured</code></td><td>Normally driven by Stripe webhook.</td></tr>
-      <tr><td><code>secured</code></td><td><code>collection_pending</code>, <code>cancelled</code></td><td>Cancellation may refund/relist.</td></tr>
+      <tr><td><code>secured</code></td><td><code>collection_pending</code>, <code>collected</code>, <code>cancelled</code></td><td><code>collected</code> may be used directly when no separate scheduling step is needed.</td></tr>
       <tr><td><code>collection_pending</code></td><td><code>collected</code>, <code>cancelled</code></td><td>Cancellation may refund/relist.</td></tr>
       <tr><td><code>collected</code></td><td><code>verification</code></td><td>Item enters admin verification.</td></tr>
       <tr><td><code>verification</code></td><td><code>payout_processing</code>, <code>refunded</code></td><td><code>payout_processing</code> records authentication success. A failure refund moves the product under review.</td></tr>
@@ -542,10 +542,10 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     <pre>{
   "productId": "66cc33333333333333333333",
   "issueType": "verification_failed",
-  "outcome": "authentication_failed",
-  "reason": "Serial number does not match the proof document"
+  "outcome": "authentication_failed"
 }</pre>
-    <p>Allowed <code>issueType</code>: <code>buyer_refused</code> or <code>verification_failed</code>. Verification outcomes are <code>authentication_failed</code> and <code>counterfeit</code>; buyer-refusal outcomes are <code>not_as_described</code>, <code>condition_differs</code>, and <code>buyer_changed_mind</code>.</p>
+    <p>Dashboard mapping: Item failed verification = <code>verification_failed</code> + <code>authentication_failed</code>; Seller unavailable = <code>seller_unavailable</code> + <code>seller_unavailable</code>; Buyer rejected = <code>buyer_refused</code> with <code>buyer_changed_mind</code>, <code>not_as_described</code>, <code>condition_differs</code>, or <code>others</code>; Other = <code>others</code> + <code>others</code>.</p>
+    <p>The request includes <code>reason</code> only for top-level <code>others</code>. Predefined options must omit it; the backend stores a normalized audit description.</p>
     <h4>201 response</h4>
     <pre>{
   "success": true,
@@ -558,7 +558,7 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     "admin": "66aa11111111111111111111",
     "issueType": "verification_failed",
     "outcome": "authentication_failed",
-    "reason": "Serial number does not match the proof document",
+    "reason": "Authentication mismatch detected",
     "resolved": false
   }
 }</pre>

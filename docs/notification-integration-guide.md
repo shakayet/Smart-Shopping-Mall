@@ -199,8 +199,8 @@ these notification types:
 - `payout_paid`: operations released the seller payout.
 
 Policy notifications include `data.outcome` where applicable. Supported values
-are `authentication_failed`, `counterfeit`, `not_as_described`,
-`condition_differs`, and `buyer_changed_mind`.
+are `authentication_failed`, `counterfeit`, `seller_unavailable`,
+`not_as_described`, `condition_differs`, `buyer_changed_mind`, and `others`.
 
 Do not place FCM registration tokens in logs, analytics, crash reports, URLs,
 or local plaintext debug output.

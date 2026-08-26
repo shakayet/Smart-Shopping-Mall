@@ -17,20 +17,48 @@ import {
 import { NotificationEvent } from '../notification/notification.event';
 import { Wishlist } from '../wishlist/wishlist.model';
 import { OrderService } from '../order/order.service';
+import { ISSUE_TYPE } from '../../../enums/issue';
+
+const defaultIssueReason = (
+  issueType: ISSUE_TYPE,
+  outcome: ORDER_OUTCOME,
+) => {
+  const reasons: Partial<Record<ORDER_OUTCOME, string>> = {
+    [ORDER_OUTCOME.AUTHENTICATION_FAILED]:
+      'Authentication mismatch detected',
+    [ORDER_OUTCOME.COUNTERFEIT]: 'Counterfeit item detected',
+    [ORDER_OUTCOME.SELLER_UNAVAILABLE]:
+      'Seller could not complete collection',
+    [ORDER_OUTCOME.BUYER_CHANGED_MIND]:
+      'Buyer changed their mind at delivery',
+    [ORDER_OUTCOME.NOT_AS_DESCRIBED]:
+      'Buyer reported that the item was not as described',
+    [ORDER_OUTCOME.CONDITION_DIFFERS]:
+      'Buyer reported that the item condition differed from the listing',
+    [ORDER_OUTCOME.OTHERS]: 'Buyer rejected the item for another reason',
+  };
+
+  if (issueType === ISSUE_TYPE.OTHERS) return '';
+  return reasons[outcome] ?? 'Issue reported by an administrator';
+};
 
 const createIssue = async (
   productId: string,
-  issueType: string,
+  issueType: ISSUE_TYPE,
   outcome: ORDER_OUTCOME,
-  reason: string,
+  reason: string | undefined,
   adminId: string,
 ) => {
+  const effectiveReason =
+    issueType === ISSUE_TYPE.OTHERS
+      ? reason?.trim() ?? ''
+      : defaultIssueReason(issueType, outcome);
   // Check for existing unresolved issue for product
   const existingIssue = await Issue.findOne({
     product: productId,
     resolved: false,
   });
-  if (existingIssue) {
+  if (existingIssue && issueType !== ISSUE_TYPE.SELLER_UNAVAILABLE) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
       'An unresolved issue already exists for this product',
@@ -48,19 +76,41 @@ const createIssue = async (
     order = await Order.findOne({
       product: productId,
       buyer: product.buyer,
-    });
+    }).sort({ createdAt: -1 });
   }
 
-  const refunded = Boolean(order);
-  if (order) {
+  let refunded = false;
+  let autoResolved = false;
+  if (issueType === ISSUE_TYPE.SELLER_UNAVAILABLE) {
+    if (!order) {
+      throw new ApiError(
+        StatusCodes.NOT_FOUND,
+        'No active order was found for this product',
+      );
+    }
+    const result = await OrderService.reportMissedCollection(
+      order._id.toString(),
+      adminId,
+      effectiveReason,
+    );
+    refunded = result.cancelled;
+    autoResolved = true;
+  } else if (issueType !== ISSUE_TYPE.OTHERS) {
+    if (!order) {
+      throw new ApiError(
+        StatusCodes.NOT_FOUND,
+        'No active order was found for this product',
+      );
+    }
     order = await OrderService.updateOrderStatus(
       order._id.toString(),
       ORDER_STATUS.REFUNDED,
-      reason,
+      effectiveReason,
       adminId,
       outcome,
       false,
     );
+    refunded = true;
   }
 
   // Create issue
@@ -70,8 +120,9 @@ const createIssue = async (
     seller: product.seller,
     issueType,
     outcome,
-    reason,
+    reason: effectiveReason,
     admin: adminId,
+    resolved: autoResolved,
   });
 
   // Notify seller
@@ -81,7 +132,7 @@ const createIssue = async (
       email: seller.email,
       productName: product.name,
       issueType,
-      reason,
+      reason: effectiveReason,
       refunded,
     });
     await emailHelper.sendEmail(emailData);

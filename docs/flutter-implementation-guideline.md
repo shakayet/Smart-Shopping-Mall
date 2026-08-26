@@ -997,7 +997,7 @@ enum OrderStatus {
 
 ```
 pending_payment  → [secured]
-secured          → [collection_pending, cancelled]
+secured          → [collection_pending, collected, cancelled]
 collection_pending → [collected, cancelled]
 collected        → [verification]
 verification     → [payout_processing, refunded]
@@ -1035,7 +1035,7 @@ extension OrderStatusX on OrderStatus {
 
   List<OrderStatus> get allowedNext => switch (this) {
     OrderStatus.pendingPayment => [OrderStatus.secured],
-    OrderStatus.secured => [OrderStatus.collectionPending, OrderStatus.cancelled],
+    OrderStatus.secured => [OrderStatus.collectionPending, OrderStatus.collected, OrderStatus.cancelled],
     OrderStatus.collectionPending => [OrderStatus.collected, OrderStatus.cancelled],
     OrderStatus.collected => [OrderStatus.verification],
     OrderStatus.verification => [OrderStatus.payoutProcessing, OrderStatus.refunded],
@@ -1165,7 +1165,7 @@ Mobile user-facing: "Contact Support" CTA → email support. Issue endpoints are
 
 | Endpoint | Body |
 |----------|------|
-| `POST /issues` | `{ productId:string, issueType: 'buyer_refused'\|'verification_failed', outcome:string, reason:string }` (NOT orderId-based; outcome must match the issue type) |
+| `POST /issues` | `{ productId:string, issueType: 'buyer_refused'\|'verification_failed'\|'seller_unavailable'\|'others', outcome:string, reason?:string }` (`reason` is required and accepted only for top-level `others`) |
 | `PATCH /issues/:id/resolve` | `{ action: 'delete'\|'make_available' }` (NOT resolution=approved/rejected) |
 
 ---
@@ -1740,7 +1740,7 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 
 | Method | Path | Auth | Body |
 |--------|------|------|------|
-| POST | `/issues` | ADMIN, SUPER_ADMIN | JSON: `{ productId:string ⚠️ (not orderId), issueType: 'buyer_refused'\|'verification_failed', outcome:'authentication_failed'\|'counterfeit'\|'not_as_described'\|'condition_differs'\|'buyer_changed_mind', reason:string }` |
+| POST | `/issues` | ADMIN, SUPER_ADMIN | JSON: `{ productId:string ⚠️ (not orderId), issueType: 'buyer_refused'\|'verification_failed'\|'seller_unavailable'\|'others', outcome:'authentication_failed'\|'counterfeit'\|'seller_unavailable'\|'not_as_described'\|'condition_differs'\|'buyer_changed_mind'\|'others', reason?:string }`. `reason` is used only for top-level `others`. |
 | GET | `/issues` | ADMIN, SUPER_ADMIN | Query: page/limit |
 | GET | `/issues/:id` | ADMIN, SUPER_ADMIN | — |
 | PATCH | `/issues/:id/resolve` | ADMIN, SUPER_ADMIN | JSON: `{ action: 'delete' \| 'make_available' ⚠️ }` |

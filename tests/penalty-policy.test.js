@@ -36,6 +36,7 @@ test('delivery rejection retains the configured order handling fee', () => {
     ORDER_OUTCOME.NOT_AS_DESCRIBED,
     ORDER_OUTCOME.CONDITION_DIFFERS,
     ORDER_OUTCOME.BUYER_CHANGED_MIND,
+    ORDER_OUTCOME.OTHERS,
   ]) {
     assert.equal(refundAmountForOutcome(order, outcome), 2816);
   }
@@ -45,6 +46,15 @@ test('ready-for-delivery orders support a policy refund transition', () => {
   assert.equal(
     ORDER_STATUS_TRANSITIONS[ORDER_STATUS.READY_FOR_DELIVERY].includes(
       ORDER_STATUS.REFUNDED,
+    ),
+    true,
+  );
+});
+
+test('a secured order can be marked collected without a scheduling step', () => {
+  assert.equal(
+    ORDER_STATUS_TRANSITIONS[ORDER_STATUS.SECURED].includes(
+      ORDER_STATUS.COLLECTED,
     ),
     true,
   );
@@ -67,7 +77,6 @@ test('issue validation keeps outcomes aligned with the issue workflow', () => {
       productId: 'product-1',
       issueType: 'verification_failed',
       outcome: ORDER_OUTCOME.COUNTERFEIT,
-      reason: 'Authentication evidence indicates a counterfeit item',
     },
   });
   const invalid = IssueValidation.createIssueZodSchema.safeParse({
@@ -75,9 +84,57 @@ test('issue validation keeps outcomes aligned with the issue workflow', () => {
       productId: 'product-1',
       issueType: 'verification_failed',
       outcome: ORDER_OUTCOME.BUYER_CHANGED_MIND,
-      reason: 'Mismatched workflow',
     },
   });
   assert.equal(valid.success, true);
   assert.equal(invalid.success, false);
+});
+
+test('issue validation supports every dashboard report option', () => {
+  const options = [
+    ['verification_failed', ORDER_OUTCOME.AUTHENTICATION_FAILED],
+    ['seller_unavailable', ORDER_OUTCOME.SELLER_UNAVAILABLE],
+    ['buyer_refused', ORDER_OUTCOME.BUYER_CHANGED_MIND],
+    ['buyer_refused', ORDER_OUTCOME.NOT_AS_DESCRIBED],
+    ['buyer_refused', ORDER_OUTCOME.CONDITION_DIFFERS],
+    ['buyer_refused', ORDER_OUTCOME.OTHERS],
+    ['others', ORDER_OUTCOME.OTHERS],
+  ];
+
+  for (const [issueType, outcome] of options) {
+    const parsed = IssueValidation.createIssueZodSchema.safeParse({
+      body: {
+        productId: 'product-1',
+        issueType,
+        outcome,
+        ...(issueType === 'others'
+          ? { reason: 'Dashboard supplied reason' }
+          : {}),
+      },
+    });
+    assert.equal(parsed.success, true, `${issueType}/${outcome}`);
+  }
+});
+
+test('reason is accepted only for the top-level others option', () => {
+  const missingOtherReason =
+    IssueValidation.createIssueZodSchema.safeParse({
+      body: {
+        productId: 'product-1',
+        issueType: 'others',
+        outcome: ORDER_OUTCOME.OTHERS,
+      },
+    });
+  const unexpectedPredefinedReason =
+    IssueValidation.createIssueZodSchema.safeParse({
+      body: {
+        productId: 'product-1',
+        issueType: 'buyer_refused',
+        outcome: ORDER_OUTCOME.NOT_AS_DESCRIBED,
+        reason: 'This must be omitted for predefined options',
+      },
+    });
+
+  assert.equal(missingOtherReason.success, false);
+  assert.equal(unexpectedPredefinedReason.success, false);
 });
