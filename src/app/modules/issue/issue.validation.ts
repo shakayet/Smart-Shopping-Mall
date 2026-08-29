@@ -45,13 +45,6 @@ const createIssueZodSchema = z.object({
           message: 'Reason is required for the top-level others option',
         });
       }
-      if (value.issueType !== ISSUE_TYPE.OTHERS && value.reason !== undefined) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['reason'],
-          message: 'Reason is only accepted for the top-level others option',
-        });
-      }
     }),
 });
 

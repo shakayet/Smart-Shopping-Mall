@@ -17,6 +17,7 @@ const {
 const {
   IssueValidation,
 } = require('../dist/app/modules/issue/issue.validation.js');
+const { emailTemplate } = require('../dist/shared/emailTemplate.js');
 
 test('authentication failure refunds the full payment', () => {
   const order = { price: 3200, sellerPayout: 2816 };
@@ -58,6 +59,12 @@ test('a secured order can be marked collected without a scheduling step', () => 
     ),
     true,
   );
+});
+
+test('a collected order can record an authentication result directly', () => {
+  const transitions = ORDER_STATUS_TRANSITIONS[ORDER_STATUS.COLLECTED];
+  assert.equal(transitions.includes(ORDER_STATUS.PAYOUT_PROCESSING), true);
+  assert.equal(transitions.includes(ORDER_STATUS.REFUNDED), true);
 });
 
 test('order status validation accepts a typed delivery outcome', () => {
@@ -116,7 +123,7 @@ test('issue validation supports every dashboard report option', () => {
   }
 });
 
-test('reason is accepted only for the top-level others option', () => {
+test('admin reason is accepted for every dashboard report option', () => {
   const missingOtherReason =
     IssueValidation.createIssueZodSchema.safeParse({
       body: {
@@ -125,16 +132,39 @@ test('reason is accepted only for the top-level others option', () => {
         outcome: ORDER_OUTCOME.OTHERS,
       },
     });
-  const unexpectedPredefinedReason =
-    IssueValidation.createIssueZodSchema.safeParse({
+
+  const predefinedOptions = [
+    ['verification_failed', ORDER_OUTCOME.AUTHENTICATION_FAILED],
+    ['seller_unavailable', ORDER_OUTCOME.SELLER_UNAVAILABLE],
+    ['buyer_refused', ORDER_OUTCOME.NOT_AS_DESCRIBED],
+  ];
+
+  for (const [issueType, outcome] of predefinedOptions) {
+    const parsed = IssueValidation.createIssueZodSchema.safeParse({
       body: {
         productId: 'product-1',
-        issueType: 'buyer_refused',
-        outcome: ORDER_OUTCOME.NOT_AS_DESCRIBED,
-        reason: 'This must be omitted for predefined options',
+        issueType,
+        outcome,
+        reason: '  Admin supplied issue details  ',
       },
     });
+    assert.equal(parsed.success, true, issueType);
+    assert.equal(parsed.data.body.reason, 'Admin supplied issue details');
+  }
 
   assert.equal(missingOtherReason.success, false);
-  assert.equal(unexpectedPredefinedReason.success, false);
+});
+
+test('issue email renders admin details as text rather than HTML', () => {
+  const message = emailTemplate.issueCreated({
+    email: 'seller@example.com',
+    productName: '<strong>Designer bag</strong>',
+    issueType: 'verification_failed',
+    reason: '<img src="https://example.com/tracker">Serial number mismatch',
+    refunded: true,
+  });
+
+  assert.match(message.html, /&lt;strong&gt;Designer bag&lt;\/strong&gt;/);
+  assert.match(message.html, /&lt;img src=&quot;https:\/\/example\.com\/tracker&quot;&gt;/);
+  assert.doesNotMatch(message.html, /<img src="https:\/\/example\.com\/tracker">/);
 });

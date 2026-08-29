@@ -530,7 +530,10 @@ const resolvePolicyOutcome = (
     return undefined;
   }
 
-  if (currentStatus === ORDER_STATUS.VERIFICATION) {
+  if (
+    currentStatus === ORDER_STATUS.COLLECTED ||
+    currentStatus === ORDER_STATUS.VERIFICATION
+  ) {
     const outcome =
       requestedOutcome ?? ORDER_OUTCOME.AUTHENTICATION_FAILED;
     if (!AUTHENTICATION_FAILURE_OUTCOMES.has(outcome)) {

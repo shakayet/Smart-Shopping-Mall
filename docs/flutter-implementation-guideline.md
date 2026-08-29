@@ -999,7 +999,7 @@ enum OrderStatus {
 pending_payment  → [secured]
 secured          → [collection_pending, collected, cancelled]
 collection_pending → [collected, cancelled]
-collected        → [verification]
+collected        → [verification, payout_processing, refunded]
 verification     → [payout_processing, refunded]
 payout_processing → [ready_for_delivery]
 ready_for_delivery → [delivered, refunded]
@@ -1037,7 +1037,7 @@ extension OrderStatusX on OrderStatus {
     OrderStatus.pendingPayment => [OrderStatus.secured],
     OrderStatus.secured => [OrderStatus.collectionPending, OrderStatus.collected, OrderStatus.cancelled],
     OrderStatus.collectionPending => [OrderStatus.collected, OrderStatus.cancelled],
-    OrderStatus.collected => [OrderStatus.verification],
+    OrderStatus.collected => [OrderStatus.verification, OrderStatus.payoutProcessing, OrderStatus.refunded],
     OrderStatus.verification => [OrderStatus.payoutProcessing, OrderStatus.refunded],
     OrderStatus.payoutProcessing => [OrderStatus.readyForDelivery],
     OrderStatus.readyForDelivery => [OrderStatus.delivered, OrderStatus.refunded],
@@ -1165,7 +1165,7 @@ Mobile user-facing: "Contact Support" CTA → email support. Issue endpoints are
 
 | Endpoint | Body |
 |----------|------|
-| `POST /issues` | `{ productId:string, issueType: 'buyer_refused'\|'verification_failed'\|'seller_unavailable'\|'others', outcome:string, reason?:string }` (`reason` is required and accepted only for top-level `others`) |
+| `POST /issues` | `{ productId:string, issueType: 'buyer_refused'\|'verification_failed'\|'seller_unavailable'\|'others', outcome:string, reason?:string }` (`reason` is trimmed and limited to 1–1000 characters; it accepts admin-entered details for predefined options and is required for top-level `others`) |
 | `PATCH /issues/:id/resolve` | `{ action: 'delete'\|'make_available' }` (NOT resolution=approved/rejected) |
 
 ---
@@ -1740,7 +1740,7 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 
 | Method | Path | Auth | Body |
 |--------|------|------|------|
-| POST | `/issues` | ADMIN, SUPER_ADMIN | JSON: `{ productId:string ⚠️ (not orderId), issueType: 'buyer_refused'\|'verification_failed'\|'seller_unavailable'\|'others', outcome:'authentication_failed'\|'counterfeit'\|'seller_unavailable'\|'not_as_described'\|'condition_differs'\|'buyer_changed_mind'\|'others', reason?:string }`. `reason` is used only for top-level `others`. |
+| POST | `/issues` | ADMIN, SUPER_ADMIN | JSON: `{ productId:string ⚠️ (not orderId), issueType: 'buyer_refused'\|'verification_failed'\|'seller_unavailable'\|'others', outcome:'authentication_failed'\|'counterfeit'\|'seller_unavailable'\|'not_as_described'\|'condition_differs'\|'buyer_changed_mind'\|'others', reason?:string }`. `reason` is trimmed and limited to 1–1000 characters; it accepts admin-entered details for predefined options and is required for top-level `others`. |
 | GET | `/issues` | ADMIN, SUPER_ADMIN | Query: page/limit |
 | GET | `/issues/:id` | ADMIN, SUPER_ADMIN | — |
 | PATCH | `/issues/:id/resolve` | ADMIN, SUPER_ADMIN | JSON: `{ action: 'delete' \| 'make_available' ⚠️ }` |

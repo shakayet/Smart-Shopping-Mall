@@ -50,9 +50,7 @@ const createIssue = async (
   adminId: string,
 ) => {
   const effectiveReason =
-    issueType === ISSUE_TYPE.OTHERS
-      ? reason?.trim() ?? ''
-      : defaultIssueReason(issueType, outcome);
+    reason?.trim() || defaultIssueReason(issueType, outcome);
   // Check for existing unresolved issue for product
   const existingIssue = await Issue.findOne({
     product: productId,

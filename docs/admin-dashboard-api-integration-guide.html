@@ -457,7 +457,7 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
       <tr><td><code>pending_payment</code></td><td><code>secured</code></td><td>Normally driven by Stripe webhook.</td></tr>
       <tr><td><code>secured</code></td><td><code>collection_pending</code>, <code>collected</code>, <code>cancelled</code></td><td><code>collected</code> may be used directly when no separate scheduling step is needed.</td></tr>
       <tr><td><code>collection_pending</code></td><td><code>collected</code>, <code>cancelled</code></td><td>Cancellation may refund/relist.</td></tr>
-      <tr><td><code>collected</code></td><td><code>verification</code></td><td>Item enters admin verification.</td></tr>
+      <tr><td><code>collected</code></td><td><code>verification</code>, <code>payout_processing</code>, <code>refunded</code></td><td><code>verification</code> is an optional in-progress step; authentication success or failure may be recorded directly.</td></tr>
       <tr><td><code>verification</code></td><td><code>payout_processing</code>, <code>refunded</code></td><td><code>payout_processing</code> records authentication success. A failure refund moves the product under review.</td></tr>
       <tr><td><code>payout_processing</code></td><td><code>ready_for_delivery</code></td><td>Seller payout must first be released.</td></tr>
       <tr><td><code>ready_for_delivery</code></td><td><code>delivered</code>, <code>refunded</code></td><td>Delivery rejection requires a typed outcome and retains the handling fee.</td></tr>
@@ -542,10 +542,11 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     <pre>{
   "productId": "66cc33333333333333333333",
   "issueType": "verification_failed",
-  "outcome": "authentication_failed"
+  "outcome": "authentication_failed",
+  "reason": "The submitted serial number could not be verified"
 }</pre>
     <p>Dashboard mapping: Item failed verification = <code>verification_failed</code> + <code>authentication_failed</code>; Seller unavailable = <code>seller_unavailable</code> + <code>seller_unavailable</code>; Buyer rejected = <code>buyer_refused</code> with <code>buyer_changed_mind</code>, <code>not_as_described</code>, <code>condition_differs</code>, or <code>others</code>; Other = <code>others</code> + <code>others</code>.</p>
-    <p>The request includes <code>reason</code> only for top-level <code>others</code>. Predefined options must omit it; the backend stores a normalized audit description.</p>
+    <p><code>reason</code> accepts optional admin-entered details (trimmed, 1&ndash;1000 characters) for predefined options; when omitted, the backend stores a normalized audit description. It remains required for the top-level <code>others</code> option.</p>
     <h4>201 response</h4>
     <pre>{
   "success": true,
@@ -558,7 +559,7 @@ GET /products?searchTerm=iPhone&amp;fields=name,brand,price,status,images,seller
     "admin": "66aa11111111111111111111",
     "issueType": "verification_failed",
     "outcome": "authentication_failed",
-    "reason": "Authentication mismatch detected",
+    "reason": "The submitted serial number could not be verified",
     "resolved": false
   }
 }</pre>

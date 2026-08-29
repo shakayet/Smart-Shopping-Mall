@@ -10,6 +10,19 @@ const getProjectName = () => config.branding.projectName;
 
 const getLogoUrl = () => config.branding.logoUrl || '';
 
+const escapeHtml = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    character =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] as string,
+  );
+
 const baseTemplate = (title: string, bodyContent: string) => {
   const projectName = getProjectName();
   const logoUrl = getLogoUrl();
@@ -316,6 +329,8 @@ export type IIssueResolvedEmail = {
 
 const issueCreated = (values: IIssueCreatedEmail) => {
   const projectName = getProjectName();
+  const productName = escapeHtml(values.productName);
+  const reason = escapeHtml(values.reason);
 
   const issueTypeLabel =
     values.issueType === 'buyer_refused'
@@ -324,13 +339,13 @@ const issueCreated = (values: IIssueCreatedEmail) => {
 
   const bodyContent = `
     <p style="margin: 0 0 10px; color: #d1d5db;">
-      An issue has been reported for your product "${values.productName}".
+      An issue has been reported for your product "${productName}".
     </p>
     <p style="margin: 8px 0; color: #d1d5db;">
       Issue Type: <strong style="color: #f9fafb;">${issueTypeLabel}</strong>
     </p>
     <p style="margin: 8px 0; color: #d1d5db;">
-      Reason: <span style="color: #9ca3af;">${values.reason}</span>
+      Reason: <span style="color: #9ca3af;">${reason}</span>
     </p>
     ${values.refunded ? `
       <p style="margin: 8px 0; color: #d1d5db;">
