@@ -3,12 +3,20 @@ import { socketHelper } from '../../../helpers/socketHelper';
 import { IProductStatus } from './product.interface';
 
 export const PRODUCT_LIST_CACHE_PREFIX = 'products:list:';
+export const PRODUCT_DETAIL_CACHE_PREFIX = 'products:detail:';
 export const PRODUCT_STATUS_CHANGED_EVENT = 'product:status-changed';
 export const PRODUCT_WISHLIST_COUNT_CHANGED_EVENT =
   'product:wishlist-count-changed';
 
 export const invalidateProductListCache = () => {
   cache.flushPrefix(PRODUCT_LIST_CACHE_PREFIX);
+};
+
+export const invalidateProductCaches = (productId?: string) => {
+  invalidateProductListCache();
+  if (productId) {
+    cache.flushPrefix(`${PRODUCT_DETAIL_CACHE_PREFIX}${productId}`);
+  }
 };
 
 type ProductStatusChange = {
@@ -27,7 +35,7 @@ export const synchronizeProductStatusMutation = async <T>(
   const result = await mutation;
   if (!result) return result;
 
-  invalidateProductListCache();
+  invalidateProductCaches(change.productId);
   socketHelper.emitToAll(PRODUCT_STATUS_CHANGED_EVENT, {
     productId: change.productId,
     status: change.status,
@@ -41,7 +49,7 @@ export const publishProductWishlistCount = (
   wishlistCount: number,
 ) => {
   const normalizedCount = Math.max(0, Math.trunc(wishlistCount));
-  invalidateProductListCache();
+  invalidateProductCaches(productId);
   socketHelper.emitToAll(PRODUCT_WISHLIST_COUNT_CHANGED_EVENT, {
     productId,
     wishlistCount: normalizedCount,

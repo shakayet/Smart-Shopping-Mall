@@ -31,6 +31,14 @@ const getAllProducts = catchAsync(async (req: Request, res: Response) => {
     viewerId,
   );
 
+  res.vary('Authorization');
+  res.setHeader(
+    'Cache-Control',
+    viewerId
+      ? 'private, max-age=15, stale-while-revalidate=30'
+      : 'public, max-age=15, stale-while-revalidate=30',
+  );
+
   sendResponse(res, {
     success: true,
     statusCode: StatusCodes.OK,
@@ -56,6 +64,11 @@ const getAllProductsForAdmin = catchAsync(
 
 const getProductDetails = catchAsync(async (req: Request, res: Response) => {
   const result = await ProductService.getProductDetailsFromDB(req.params.id);
+
+  res.setHeader(
+    'Cache-Control',
+    'public, max-age=60, stale-while-revalidate=300',
+  );
 
   sendResponse(res, {
     success: true,

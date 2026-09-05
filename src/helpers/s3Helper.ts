@@ -4,8 +4,11 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  PutObjectCommandInput,
 } from '@aws-sdk/client-s3';
 import fs from 'fs';
+import crypto from 'crypto';
+import path from 'path';
 import config from '../config';
 
 const s3Client = new S3Client({
@@ -47,14 +50,27 @@ export const uploadToS3 = async (
   file: Express.Multer.File,
   folder: string = 'products',
 ): Promise<string> => {
-  const fileStream = fs.createReadStream(file.path);
-  const fileName = `${folder}/${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`;
+  const safeOriginalName = path
+    .basename(file.originalname)
+    .replace(/[^a-zA-Z0-9._-]/g, '-');
+  const fileName = `${folder}/${Date.now()}-${crypto.randomUUID()}-${safeOriginalName}`;
+  const hasBuffer = Buffer.isBuffer(file.buffer) && file.buffer.length > 0;
+  const contentLength = hasBuffer
+    ? file.buffer.length
+    : (await fs.promises.stat(file.path)).size;
 
-  const uploadParams = {
+  const uploadParams: PutObjectCommandInput = {
     Bucket: config.aws.bucketName as string,
     Key: fileName,
-    Body: fileStream,
+    Body: hasBuffer ? file.buffer : fs.createReadStream(file.path),
     ContentType: file.mimetype,
+    ContentLength: contentLength,
+    CacheControl: file.mimetype.startsWith('image/')
+      ? 'public, max-age=31536000, immutable'
+      : 'private, no-cache',
+    ContentDisposition: file.mimetype.startsWith('image/')
+      ? 'inline'
+      : undefined,
   };
 
   const command = new PutObjectCommand(uploadParams);
@@ -62,7 +78,7 @@ export const uploadToS3 = async (
 
   // Return CloudFront URL if available, else S3 URL
   if (config.aws.cloudfrontDomain) {
-    return `${config.aws.cloudfrontDomain}/${fileName}`;
+    return `${config.aws.cloudfrontDomain.replace(/\/$/, '')}/${fileName}`;
   }
   return `https://${config.aws.bucketName}.s3.${config.aws.region}.amazonaws.com/${fileName}`;
 };

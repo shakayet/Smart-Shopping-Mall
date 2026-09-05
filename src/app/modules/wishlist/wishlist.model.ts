@@ -12,5 +12,6 @@ const wishlistSchema = new Schema<IWishlist>(
 );
 
 wishlistSchema.index({ user: 1, product: 1 }, { unique: true });
+wishlistSchema.index({ user: 1, createdAt: -1 });
 
 export const Wishlist = model<IWishlist>('Wishlist', wishlistSchema);

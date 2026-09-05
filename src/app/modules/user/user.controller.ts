@@ -8,6 +8,7 @@ import catchAsync from '../../../shared/catchAsync';
 import { getSingleFilePath } from '../../../shared/getFilePath';
 import sendResponse from '../../../shared/sendResponse';
 import { UserService } from './user.service';
+import { optimizeLocalUploadedImage } from '../../../helpers/imageOptimizer';
 
 const getAllUsers = catchAsync(async (req: Request, res: Response) => {
   const result = await UserService.getAllUsersToDB(req.query);
@@ -65,7 +66,14 @@ const getProfileStats = catchAsync(async (req: Request, res: Response) => {
 const updateProfile = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const user = req.user as any;
-    let image = getSingleFilePath(req.files, 'image');
+    const fileFields = req.files;
+    const profileImage = fileFields && !Array.isArray(fileFields)
+      ? fileFields.image?.[0]
+      : undefined;
+    if (profileImage) {
+      await optimizeLocalUploadedImage(profileImage);
+    }
+    const image = getSingleFilePath(req.files, 'image');
 
     const data = {
       image,

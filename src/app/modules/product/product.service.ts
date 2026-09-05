@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { StatusCodes } from 'http-status-codes';
+import type { Express } from 'express';
 import ApiError from '../../../errors/ApiError';
 import QueryBuilder from '../../builder/QueryBuilder';
 import { IProduct } from './product.interface';
@@ -15,14 +16,17 @@ import {
 import { Wishlist } from '../wishlist/wishlist.model';
 import { NotificationEvent } from '../notification/notification.event';
 import { errorLogger } from '../../../shared/logger';
+import { optimizeUploadedImage } from '../../../helpers/imageOptimizer';
 import {
-  invalidateProductListCache,
+  invalidateProductCaches,
+  PRODUCT_DETAIL_CACHE_PREFIX,
   PRODUCT_LIST_CACHE_PREFIX,
   synchronizeProductStatusMutation,
 } from './product-state-sync';
 
 export { PRODUCT_LIST_CACHE_PREFIX } from './product-state-sync';
 const PRODUCT_LIST_CACHE_TTL_MS = 60 * 1000;
+const PRODUCT_DETAIL_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const createProductToDB = async (
   payload: Partial<IProduct>,
@@ -39,24 +43,53 @@ const createProductToDB = async (
   }
 
   // Generate unique orderId
-  const lastProduct = await Product.findOne().sort({ orderId: -1 });
+  const lastProduct = await Product.findOne()
+    .sort({ orderId: -1 })
+    .select('orderId')
+    .lean();
   const nextOrderId = lastProduct ? lastProduct.orderId + 1 : 1000; // Start from 1000 if no products exist
   payload.orderId = nextOrderId;
 
-  // Upload to S3
-  const imageUrls: string[] = [];
+  let imageUrls: string[] = [];
+  let proofUrl: string | undefined;
+  const documentFiles = files?.doc ?? [];
   try {
-    for (const imageFile of imageFiles) {
-      imageUrls.push(await uploadToS3(imageFile, 'product-images'));
-    }
-  } catch (error) {
-    await Promise.all(
-      imageUrls.map(url => deleteFromS3(url).catch(() => undefined)),
+    const optimizedImageFiles = await Promise.all(
+      imageFiles.map((imageFile: Express.Multer.File) =>
+        optimizeUploadedImage(imageFile),
+      ),
     );
-    throw error;
+    const uploadTasks = [
+      ...optimizedImageFiles.map((imageFile: Express.Multer.File) =>
+        uploadToS3(imageFile, 'product-images/optimized'),
+      ),
+      ...(documentFiles[0]
+        ? [uploadToS3(documentFiles[0], 'product-proofs')]
+        : []),
+    ];
+    const uploadResults = await Promise.allSettled(uploadTasks);
+    const uploadedUrls = uploadResults
+      .filter(
+        (result): result is PromiseFulfilledResult<string> =>
+          result.status === 'fulfilled',
+      )
+      .map(result => result.value);
+    const failedUpload = uploadResults.find(
+      result => result.status === 'rejected',
+    ) as PromiseRejectedResult | undefined;
+
+    if (failedUpload) {
+      await Promise.all(
+        uploadedUrls.map(url => deleteFromS3(url).catch(() => undefined)),
+      );
+      throw failedUpload.reason;
+    }
+
+    imageUrls = uploadedUrls.slice(0, imageFiles.length);
+    proofUrl = documentFiles[0] ? uploadedUrls[imageFiles.length] : undefined;
   } finally {
     await Promise.all(
-      imageFiles.map((file: any) =>
+      [...imageFiles, ...documentFiles].map((file: any) =>
         fs.promises.unlink(file.path).catch(() => undefined),
       ),
     );
@@ -66,23 +99,15 @@ const createProductToDB = async (
   delete payload.image;
   payload.status = 'available';
 
-  // Handle proof of purchase if provided
-  if (files?.doc) {
-    let proofUrl: string;
-    try {
-      proofUrl = await uploadToS3(files.doc[0], 'product-proofs');
-    } finally {
-      await fs.promises.unlink(files.doc[0].path).catch(() => undefined);
-    }
+  if (proofUrl) {
     payload.proofOfPurchase = proofUrl;
   }
 
   const created = await Product.create(payload);
-  const result = await Product.findById(created._id).populate(
-    'seller',
-    'name image avatar contact location country',
-  );
-  invalidateProductListCache();
+  const result = await Product.findById(created._id)
+    .populate('seller', 'name image avatar contact location country')
+    .lean();
+  invalidateProductCaches(created._id.toString());
   void NotificationEvent.itemListed(
     created.seller.toString(),
     created._id.toString(),
@@ -93,6 +118,13 @@ const createProductToDB = async (
 const toPublicProduct = (product: any) => {
   if (!product) return product;
   const value = typeof product.toJSON === 'function' ? product.toJSON() : product;
+  if ((!value.images || value.images.length === 0) && value.image) {
+    value.images = [value.image];
+  }
+  delete value.image;
+  if (value._id && !value.id) {
+    value.id = value._id.toString();
+  }
   value.originalPackagingAvailable = Boolean(
     value.originalPackagingAvailable,
   );
@@ -135,36 +167,33 @@ const getAllProductsFromDB = async (
   const cacheKey =
     PRODUCT_LIST_CACHE_PREFIX +
     buildProductFeedCacheDiscriminator(queryWithDefaults, viewerId);
-  const cached = cache.get<ProductListResponse>(cacheKey);
-  if (cached) {
-    return cached;
-  }
+  return cache.getOrSet<ProductListResponse>(
+    cacheKey,
+    PRODUCT_LIST_CACHE_TTL_MS,
+    async () => {
+      // Keep the exclusion in a separate $and clause so a caller-provided
+      // seller filter cannot overwrite it through QueryBuilder.filter().
+      const viewerFilter = buildProductFeedViewerFilter(viewerId);
+      const productQuery = new QueryBuilder(
+        Product.find(viewerFilter),
+        queryWithDefaults,
+      )
+        .search(['name', 'brand', 'description'])
+        .filter()
+        .sort()
+        .paginate()
+        .fields();
 
-  // Keep the exclusion in a separate $and clause so a caller-provided seller
-  // filter cannot overwrite it through QueryBuilder.filter().
-  const viewerFilter = buildProductFeedViewerFilter(viewerId);
-  const productQuery = new QueryBuilder(
-    Product.find(viewerFilter),
-    queryWithDefaults,
-  )
-    .search(['name', 'brand', 'description'])
-    .filter()
-    .sort()
-    .paginate()
-    .fields();
+      const [result, meta] = await Promise.all([
+        productQuery.modelQuery
+          .populate('seller', 'name image avatar contact location country')
+          .lean(),
+        productQuery.getPaginationInfo(),
+      ]);
 
-  const [result, meta] = await Promise.all([
-    productQuery.modelQuery.populate(
-      'seller',
-      'name image avatar contact location country',
-    ),
-    productQuery.getPaginationInfo(),
-  ]);
-
-  const response = { result: result.map(toPublicProduct), meta };
-  cache.set(cacheKey, response, PRODUCT_LIST_CACHE_TTL_MS);
-
-  return response;
+      return { result: result.map(toPublicProduct), meta };
+    },
+  );
 };
 
 const getAllProductsForAdmin = async (query: Record<string, unknown>) => {
@@ -176,10 +205,9 @@ const getAllProductsForAdmin = async (query: Record<string, unknown>) => {
     .fields();
 
   const [result, meta] = await Promise.all([
-    productQuery.modelQuery.populate(
-      'seller',
-      'name image avatar contact location country',
-    ),
+    productQuery.modelQuery
+      .populate('seller', 'name image avatar contact location country')
+      .lean(),
     productQuery.getPaginationInfo(),
   ]);
 
@@ -187,14 +215,16 @@ const getAllProductsForAdmin = async (query: Record<string, unknown>) => {
 };
 
 const getProductDetailsFromDB = async (id: string) => {
-  const result = await Product.findById(id).populate(
-    'seller',
-    'name image avatar contact location country',
-  );
-  if (!result) {
-    throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
-  }
-  return toPublicProduct(result);
+  const cacheKey = `${PRODUCT_DETAIL_CACHE_PREFIX}${id}`;
+  return cache.getOrSet(cacheKey, PRODUCT_DETAIL_CACHE_TTL_MS, async () => {
+    const result = await Product.findById(id)
+      .populate('seller', 'name image avatar contact location country')
+      .lean();
+    if (!result) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Product not found');
+    }
+    return toPublicProduct(result);
+  });
 };
 
 const updateProductToDB = async (
@@ -227,7 +257,7 @@ const updateProductToDB = async (
         status: payload.status,
       })
     : await mutation;
-  if (!payload.status) invalidateProductListCache();
+  if (!payload.status) invalidateProductCaches(id);
   if (result) {
     void Wishlist.distinct('user', { product: result._id })
       .then(watcherIds =>
@@ -288,7 +318,7 @@ const deleteProductFromDB = async (
 
   const result = await Product.findByIdAndDelete(id);
   await Wishlist.deleteMany({ product: product._id });
-  invalidateProductListCache();
+  invalidateProductCaches(id);
   if (result) {
     void Promise.all(
       watcherIds.map(watcherId =>

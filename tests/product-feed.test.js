@@ -23,3 +23,16 @@ test('product feed caches are isolated by viewer', () => {
     buildProductFeedCacheDiscriminator(query, 'viewer-2'),
   );
 });
+
+test('equivalent product-feed queries share one cache discriminator', () => {
+  assert.equal(
+    buildProductFeedCacheDiscriminator(
+      { status: 'available', page: '1', filters: { brand: 'Acme', price: 20 } },
+      'viewer-1',
+    ),
+    buildProductFeedCacheDiscriminator(
+      { filters: { price: 20, brand: 'Acme' }, page: '1', status: 'available' },
+      'viewer-1',
+    ),
+  );
+});

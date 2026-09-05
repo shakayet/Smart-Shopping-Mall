@@ -7,6 +7,7 @@ import passport from 'passport';
 import MongoStore from 'connect-mongo';
 import path from 'path';
 import mongoose from 'mongoose';
+import compression from 'compression';
 import { initializePassport } from './config/passport';
 import config from './config';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
@@ -37,6 +38,10 @@ app.use(
     },
   }),
 );
+
+// Compress JSON/text responses. Image formats are already compressed and are
+// skipped by the middleware's content-type filter.
+app.use(compression({ threshold: 1_024 }));
 
 //Stripe webhook needs the raw request body, must be registered before express.json()
 app.post(
@@ -85,7 +90,10 @@ app.use(
     dotfiles: 'deny',
     fallthrough: false,
     index: false,
-    maxAge: config.node_env === 'production' ? '1d' : 0,
+    etag: true,
+    lastModified: true,
+    immutable: config.node_env === 'production',
+    maxAge: config.node_env === 'production' ? '1y' : 0,
   }),
 );
 

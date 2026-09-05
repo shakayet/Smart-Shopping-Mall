@@ -60,5 +60,7 @@ productSchema.index({ status: 1 });
 productSchema.index({ seller: 1 });
 productSchema.index({ wishlistCount: -1 });
 productSchema.index({ status: 1, reservationExpiresAt: 1 });
+productSchema.index({ status: 1, createdAt: -1 });
+productSchema.index({ seller: 1, createdAt: -1 });
 
 export const Product = model<IProduct>('Product', productSchema);

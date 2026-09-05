@@ -1,5 +1,24 @@
 import { FilterQuery, Query } from 'mongoose';
 
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+
+export const normalizePagination = (query: Record<string, unknown>) => {
+  const requestedLimit = Math.trunc(Number(query.limit));
+  const requestedPage = Math.trunc(Number(query.page));
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, MAX_PAGE_SIZE)
+    : DEFAULT_PAGE_SIZE;
+  const page = Number.isFinite(requestedPage) && requestedPage > 0
+    ? requestedPage
+    : 1;
+
+  return { limit, page };
+};
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 class QueryBuilder<T> {
   public modelQuery: Query<T[], T>;
   public query: Record<string, unknown>;
@@ -12,12 +31,15 @@ class QueryBuilder<T> {
   //searching
   search(searchableFields: string[]) {
     if (this?.query?.searchTerm) {
+      const searchTerm = escapeRegExp(
+        String(this.query.searchTerm).trim().slice(0, 100),
+      );
       this.modelQuery = this.modelQuery.find({
         $or: searchableFields.map(
           field =>
             ({
               [field]: {
-                $regex: this.query.searchTerm,
+                $regex: searchTerm,
                 $options: 'i',
               },
             } as FilterQuery<T>)
@@ -47,8 +69,7 @@ class QueryBuilder<T> {
 
   //pagination
   paginate() {
-    const limit = Number(this?.query?.limit) || 10;
-    const page = Number(this?.query?.page) || 1;
+    const { limit, page } = normalizePagination(this.query);
     const skip = (page - 1) * limit;
 
     this.modelQuery = this.modelQuery.skip(skip).limit(limit);
@@ -81,8 +102,7 @@ class QueryBuilder<T> {
     const total = await this.modelQuery.model.countDocuments(
       this.modelQuery.getFilter()
     );
-    const limit = Number(this?.query?.limit) || 10;
-    const page = Number(this?.query?.page) || 1;
+    const { limit, page } = normalizePagination(this.query);
     const totalPage = Math.ceil(total / limit);
 
     return {
