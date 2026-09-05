@@ -7,6 +7,7 @@ const { toMinorUnits } = require('../dist/util/money');
 const {
   AuthValidation,
 } = require('../dist/app/modules/auth/auth.validation');
+const { emailTemplate } = require('../dist/shared/emailTemplate');
 
 test('JWT helper signs and verifies the intended claims', () => {
   const secret = 'test-secret-that-is-longer-than-32-characters';
@@ -55,6 +56,22 @@ test('email OTP validation accepts exactly five digits', () => {
     }).success,
     false,
   );
+});
+
+test('OTP email subjects are unique without exposing the code', () => {
+  const values = {
+    name: 'Test User',
+    email: 'user@example.com',
+    otp: 12345,
+  };
+  const first = emailTemplate.loginOtp(values);
+  const second = emailTemplate.loginOtp(values);
+
+  assert.notEqual(first.subject, second.subject);
+  assert.match(first.subject, /sign-in code · [0-9A-F]{8}$/);
+  assert.equal(first.subject.includes(String(values.otp)), false);
+  assert.match(first.text, /sign-in code is 12345/);
+  assert.match(first.text, /expires in 5 minutes/);
 });
 
 test('security tokens have sufficient entropy and are unique', () => {

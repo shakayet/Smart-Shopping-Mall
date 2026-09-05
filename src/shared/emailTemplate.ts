@@ -1,4 +1,5 @@
 import config from '../config';
+import crypto from 'node:crypto';
 import {
   ICreateAccount,
   ILoginOtp,
@@ -9,6 +10,9 @@ import {
 const getProjectName = () => config.branding.projectName;
 
 const getLogoUrl = () => config.branding.logoUrl || '';
+
+const uniqueTransactionalSubject = (subject: string) =>
+  `${subject} · ${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
 const escapeHtml = (value: string) =>
   value.replace(
@@ -199,7 +203,10 @@ const createAccount = (values: ICreateAccount) => {
 
   const data = {
     to: values.email,
-    subject: `Verify your ${projectName} account`,
+    subject: uniqueTransactionalSubject(
+      `Verify your ${projectName} account`,
+    ),
+    text: `Hi ${values.name},\n\nYour ${projectName} verification code is ${values.otp}.\n\nThis code expires in 3 minutes. If you did not request it, you can ignore this email.`,
     html: baseTemplate('Verify your account', bodyContent),
   };
 
@@ -224,7 +231,10 @@ const resetPassword = (values: IResetPassword) => {
 
   const data = {
     to: values.email,
-    subject: `Reset your ${projectName} password`,
+    subject: uniqueTransactionalSubject(
+      `Reset your ${projectName} password`,
+    ),
+    text: `Your ${projectName} password reset code is ${values.otp}.\n\nThis code expires in 3 minutes. If you did not request it, you can ignore this email.`,
     html: baseTemplate('Reset your password', bodyContent),
   };
 
@@ -249,7 +259,10 @@ const loginOtp = (values: ILoginOtp) => {
 
   const data = {
     to: values.email,
-    subject: `Your ${projectName} sign-in code`,
+    subject: uniqueTransactionalSubject(
+      `Your ${projectName} sign-in code`,
+    ),
+    text: `Hi ${values.name || 'there'},\n\nYour ${projectName} sign-in code is ${values.otp}.\n\nThis code expires in 5 minutes and can only be used once. If you did not request it, you can ignore this email.`,
     html: baseTemplate('Sign in to your account', bodyContent),
   };
 
