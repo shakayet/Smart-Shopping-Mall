@@ -86,7 +86,7 @@ const envSchema = z
     ),
     TEST_FIXED_OTP_CODE: z.preprocess(
       emptyStringToUndefined,
-      z.string().regex(/^\d{6}$/).optional(),
+      z.string().regex(/^\d{5}$/).optional(),
     ),
     FIREBASE_SERVICE_ACCOUNT_KEY_BASE64: z.string().min(1).optional(),
     FIREBASE_WEB_PUSH_CREDENTIALS: z.string().min(20).max(4096).optional(),

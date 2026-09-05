@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 
 const generateOTP = (): number => {
-  const min = 100000;
-  const max = 999999;
+  const min = 10000;
+  const max = 99999;
   const range = max - min;
   if (range > 0xffffffff) {
     const buf = crypto.randomBytes(6);

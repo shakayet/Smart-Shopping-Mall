@@ -4,6 +4,9 @@ const { jwtHelper } = require('../dist/helpers/jwtHelper');
 const generateOTP = require('../dist/util/generateOTP').default;
 const cryptoToken = require('../dist/util/cryptoToken').default;
 const { toMinorUnits } = require('../dist/util/money');
+const {
+  AuthValidation,
+} = require('../dist/app/modules/auth/auth.validation');
 
 test('JWT helper signs and verifies the intended claims', () => {
   const secret = 'test-secret-that-is-longer-than-32-characters';
@@ -17,12 +20,41 @@ test('JWT helper signs and verifies the intended claims', () => {
   assert.equal(payload.role, 'USER');
 });
 
-test('login OTP is always a six-digit integer', () => {
+test('email OTP is always a five-digit integer', () => {
   for (let index = 0; index < 100; index += 1) {
     const otp = generateOTP();
     assert.equal(Number.isInteger(otp), true);
-    assert.equal(otp >= 100000 && otp <= 999999, true);
+    assert.equal(otp >= 10000 && otp <= 99999, true);
   }
+});
+
+test('email OTP validation accepts exactly five digits', () => {
+  for (const oneTimeCode of [12345, '12345']) {
+    const result = AuthValidation.createVerifyLoginOtpZodSchema.safeParse({
+      body: { email: 'user@example.com', oneTimeCode },
+    });
+    assert.equal(result.success, true);
+  }
+
+  for (const oneTimeCode of [1234, 123456, '1234', '123456', '12a45']) {
+    const result = AuthValidation.createVerifyLoginOtpZodSchema.safeParse({
+      body: { email: 'user@example.com', oneTimeCode },
+    });
+    assert.equal(result.success, false, String(oneTimeCode));
+  }
+
+  assert.equal(
+    AuthValidation.createVerifyEmailZodSchema.safeParse({
+      body: { email: 'user@example.com', oneTimeCode: 12345 },
+    }).success,
+    true,
+  );
+  assert.equal(
+    AuthValidation.createVerifyEmailZodSchema.safeParse({
+      body: { email: 'user@example.com', oneTimeCode: 123456 },
+    }).success,
+    false,
+  );
 });
 
 test('security tokens have sufficient entropy and are unique', () => {

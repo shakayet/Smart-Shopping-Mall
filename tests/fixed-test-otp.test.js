@@ -13,14 +13,14 @@ const fixedEmail = 'mdbayazid131.dev@gmail.com';
 test('fixed OTP applies only to the configured development email', () => {
   assert.equal(isFixedTestOtpEmail(fixedEmail), true);
   assert.equal(isFixedTestOtpEmail(`  ${fixedEmail.toUpperCase()}  `), true);
-  assert.equal(getFixedTestOtp(fixedEmail), 123456);
-  assert.equal(isValidFixedTestOtp(fixedEmail, 123456), true);
-  assert.equal(isValidFixedTestOtp(fixedEmail, '123456'), true);
+  assert.equal(getFixedTestOtp(fixedEmail), 12345);
+  assert.equal(isValidFixedTestOtp(fixedEmail, 12345), true);
+  assert.equal(isValidFixedTestOtp(fixedEmail, '12345'), true);
 
   assert.equal(isFixedTestOtpEmail('another-user@example.com'), false);
   assert.equal(getFixedTestOtp('another-user@example.com'), null);
-  assert.equal(isValidFixedTestOtp('another-user@example.com', 123456), false);
-  assert.equal(isValidFixedTestOtp(fixedEmail, 654321), false);
+  assert.equal(isValidFixedTestOtp('another-user@example.com', 12345), false);
+  assert.equal(isValidFixedTestOtp(fixedEmail, 54321), false);
 });
 
 test('production configuration rejects the fixed OTP exception', () => {
@@ -34,7 +34,7 @@ test('production configuration rejects the fixed OTP exception', () => {
         ...process.env,
         NODE_ENV: 'production',
         TEST_FIXED_OTP_EMAIL: fixedEmail,
-        TEST_FIXED_OTP_CODE: '123456',
+        TEST_FIXED_OTP_CODE: '12345',
       },
     },
   );

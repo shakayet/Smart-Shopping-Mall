@@ -596,7 +596,7 @@ Sign Up Screen (name, email, password, contact, location)
 Response: { verified:false (implied via register route), ...user }
 Snackbar: "Account created. Check your email for the OTP."
     ↓
-Verify Email Screen (6-digit OTP input, pre-filled email)
+Verify Email Screen (5-digit OTP input, pre-filled email)
     ↓ POST /auth/verify-email  { email, oneTimeCode }
 Case A — First-time activation (user.verified==false before):
     → account activated, response.data = null
@@ -864,7 +864,7 @@ class VerifyEmailRequest with _$VerifyEmailRequest {
 | Screen | Validation | On Success |
 |--------|-----------|------------|
 | Register (`/auth/register`) | Email (valid format), Password ≥ 6 chars, Contact non-empty, Location non-empty | Show VerifyEmailPage with email prefilled; snackbar: "Check your email for OTP" |
-| Verify Email | 6-digit OTP numeric | If activation → Login Page; if reset-token returned → NewPassword page, store token in-memory |
+| Verify Email | 5-digit OTP numeric | If activation → Login Page; if reset-token returned → NewPassword page, store token in-memory |
 | Resend OTP Button | Cooldown 60s timer; disabled until backend fixes to accept unauthenticated `{email}` body | Snackbar: "OTP resent" |
 | Login | Same as above form | Save tokens → AuthBloc → Home |
 | Forget Password → Enter Email | Valid email | Goto VerifyEmail page |
@@ -1584,7 +1584,7 @@ Mirror **backend Zod schemas exactly**:
 | `password` (register/login) | Non-empty, min 6 chars | ✅ Required only — no min enforced on backend yet; add client-side only for UX |
 | `confirmPassword` | Equals password | ✅ Required; equality checked in service layer |
 | `currentPassword` (change pwd) | Non-empty | ✅ Required; equality checked in service layer |
-| `oneTimeCode` | Exactly 6 digits, numeric | ✅ Required (type: `number`) — if string sent, coerce to number. Note: service expects `number` type not string! |
+| `oneTimeCode` | Exactly 5 digits, numeric | ✅ Required (type: `number`) — login OTP verification also accepts a numeric string. |
 | `contact` / `phone` | Non-empty | ✅ Required on both user (contact) and order deliveryDetails (phone) |
 | `location` / deliveryDetails.location | Non-empty | ✅ Required |
 | `address` (delivery) | Non-empty | ✅ Required |

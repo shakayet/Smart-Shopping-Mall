@@ -1,9 +1,19 @@
 import { z } from 'zod';
 
+const otpValidationMessage = 'One time code must be a 5-digit number';
+const fiveDigitOtpNumber = z
+  .number({
+    required_error: 'One time code is required',
+    invalid_type_error: otpValidationMessage,
+  })
+  .int(otpValidationMessage)
+  .min(10000, otpValidationMessage)
+  .max(99999, otpValidationMessage);
+
 const createVerifyEmailZodSchema = z.object({
   body: z.object({
     email: z.string({ required_error: 'Email is required' }).email(),
-    oneTimeCode: z.number({ required_error: 'One time code is required' }),
+    oneTimeCode: fiveDigitOtpNumber,
   }),
 });
 
@@ -40,10 +50,15 @@ const createVerifyLoginOtpZodSchema = z.object({
     oneTimeCode: z
       .union([
         z.number({ required_error: 'One time code is required' }),
-        z.string({ required_error: 'One time code is required' }),
+        z
+          .string({ required_error: 'One time code is required' })
+          .regex(/^\d{5}$/, otpValidationMessage),
       ])
       .transform((v) => (typeof v === 'string' ? Number(v) : v))
-      .refine((v) => Number.isFinite(v), 'One time code must be a 6-digit number'),
+      .refine(
+        (v) => Number.isInteger(v) && v >= 10000 && v <= 99999,
+        otpValidationMessage,
+      ),
   }),
 });
 
