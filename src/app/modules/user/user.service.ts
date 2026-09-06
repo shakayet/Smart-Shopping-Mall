@@ -10,7 +10,6 @@ import config from '../../../config';
 import ApiError from '../../../errors/ApiError';
 import { emailHelper } from '../../../helpers/emailHelper';
 import { emailTemplate } from '../../../shared/emailTemplate';
-import unlinkFile from '../../../shared/unlinkFile';
 import generateOTP from '../../../util/generateOTP';
 import QueryBuilder from '../../builder/QueryBuilder';
 import { IUser } from './user.interface';
@@ -18,6 +17,12 @@ import { User } from './user.model';
 import { Order } from '../order/order.model';
 import { Product } from '../product/product.model';
 import { NotificationService } from '../notification/notification.service';
+import { errorLogger } from '../../../shared/logger';
+import {
+  isOwnedProfileImage,
+  removeStoredProfileImage,
+} from '../../../helpers/profileImageStorage';
+import { invalidateAllProductCaches } from '../product/product-state-sync';
 import {
   getFixedTestOtp,
   isFixedTestOtpEmail,
@@ -177,19 +182,93 @@ const updateProfileToDB = async (
   const { id } = user;
   const isExistUser = await User.isExistUserById(id);
   if (!isExistUser) {
+    if (payload.image) {
+      await removeStoredProfileImage(payload.image).catch(() => undefined);
+    }
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
 
-  //unlink file here
-  if (payload.image) {
-    unlinkFile(isExistUser.image);
+  let updateDoc;
+  try {
+    updateDoc = await User.findOneAndUpdate({ _id: id }, payload, {
+      new: true,
+    });
+  } catch (error) {
+    if (payload.image) {
+      await removeStoredProfileImage(payload.image).catch(() => undefined);
+    }
+    throw error;
   }
 
-  const updateDoc = await User.findOneAndUpdate({ _id: id }, payload, {
-    new: true,
-  });
+  if (!updateDoc && payload.image) {
+    await removeStoredProfileImage(payload.image).catch(() => undefined);
+  }
+  if (updateDoc && payload.image) {
+    const previousImages = new Set([isExistUser.image, isExistUser.avatar]);
+    previousImages.delete(payload.image);
+    for (const previousImage of previousImages) {
+      try {
+        await removeStoredProfileImage(previousImage);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errorLogger.error(
+          `[PROFILE_IMAGE] Old image cleanup failed for user ${id}: ${message}`,
+        );
+      }
+    }
+  }
+
+  if (updateDoc) invalidateAllProductCaches();
 
   return updateDoc ? toUserProfile(updateDoc) : null;
+};
+
+const deleteProfilePhotoFromDB = async (user: JwtPayload) => {
+  const { id } = user;
+  const existingUser = await User.findById(id);
+  if (!existingUser) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
+  }
+
+  const previousImage = existingUser.image;
+  const previousAvatar = existingUser.avatar;
+  const updatedUser = await User.findOneAndUpdate(
+    {
+      _id: id,
+      image: previousImage,
+      avatar: previousAvatar,
+    },
+    { $set: { image: null, avatar: null } },
+    { new: true },
+  );
+  if (!updatedUser) {
+    throw new ApiError(
+      StatusCodes.CONFLICT,
+      'Profile photo changed while it was being deleted',
+    );
+  }
+
+  const storedImages = [...new Set([previousImage, previousAvatar])].filter(
+    isOwnedProfileImage,
+  );
+  try {
+    for (const storedImage of storedImages) {
+      await removeStoredProfileImage(storedImage);
+    }
+  } catch (error) {
+    await User.updateOne(
+      { _id: id, image: null, avatar: null },
+      { $set: { image: previousImage, avatar: previousAvatar } },
+    );
+    invalidateAllProductCaches();
+    throw new ApiError(
+      StatusCodes.BAD_GATEWAY,
+      'Unable to delete the profile photo from storage',
+    );
+  }
+
+  invalidateAllProductCaches();
+  return toUserProfile(updatedUser);
 };
 
 const deleteAccountFromDB = async (user: JwtPayload) => {
@@ -199,9 +278,9 @@ const deleteAccountFromDB = async (user: JwtPayload) => {
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
 
-  //unlink file here
-  if (isExistUser.image) {
-    unlinkFile(isExistUser.image);
+  const storedImages = [...new Set([isExistUser.image, isExistUser.avatar])];
+  for (const storedImage of storedImages) {
+    await removeStoredProfileImage(storedImage);
   }
 
   const deleteDoc = await User.findByIdAndDelete(id);
@@ -215,6 +294,7 @@ export const UserService = {
   getUserProfileFromDB,
   getProfileStatsFromDB,
   updateProfileToDB,
+  deleteProfilePhotoFromDB,
   deleteAccountFromDB,
   toUserProfile,
 };

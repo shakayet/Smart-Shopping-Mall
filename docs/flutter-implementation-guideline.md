@@ -1151,6 +1151,7 @@ enum UserStatus { active, ban }
 |--------|------|
 | Load my profile | `GET /user/profile` (JWT from auth) |
 | Update profile | `PATCH /user/profile` (multipart. Supports BOTH patterns: (a) form field `data` = JSON of partial user object OR (b) flat form fields + `image` multipart file). Multipart field names: `image` = avatar upload |
+| Delete profile photo | `DELETE /user/profile/photo` (removes the stored S3/local object and returns the updated profile) |
 | Delete account | `DELETE /user/profile` (confirm dialog, then logout) |
 
 **Profile header stats** (itemsListed, purchasesCount, closetValue):
@@ -1679,7 +1680,8 @@ flutter pub run build_runner watch --delete-conflicting-outputs
 | GET | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | `UserModel`; `phone`, `country`, and `location` are always present (nullable). Legacy `contact` is returned as `phone` when `phone` has not been set. |
 | GET | `/user/profile/stats` | USER (JWT) | — | Signed-in user's `{ totalProductsListed, totalProductsPurchased, totalEarnings, currency }` |
 | GET | `/user/profile/stats/:userId` | USER (JWT) | — | Target user's `{ totalProductsListed, totalProductsPurchased, totalEarnings, currency }` |
-| PATCH | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | **multipart**: form field `data` = JSON of `{name?, email?, image?, contact?, phone?, location?, country?}` **OR** the same values as flat form fields + multipart file field `image` | Updated `UserModel` |
+| PATCH | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | **multipart**: form field `data` = JSON of `{name?, email?, contact?, phone?, location?, country?}` **OR** the same values as flat form fields + multipart file field `image`. Image URLs cannot be assigned through JSON. | Updated `UserModel` |
+| DELETE | `/user/profile/photo` | USER, ADMIN, SUPER_ADMIN (JWT) | — | Deletes the owned S3/local photo and returns the updated `UserModel` with `image` and `avatar` set to `null` |
 | DELETE | `/user/profile` | USER, ADMIN, SUPER_ADMIN (JWT) | — | Deletes account |
 | GET | `/user/` | ADMIN, SUPER_ADMIN | query: page/limit/searchTerm/sort | Paginated list of all users (admin view) |
 | POST | `/user/` | Public (rate limited) | JSON: `{ name:string, email:string, password:string, contact:string, location:string, profile?:string }` | Created `UserModel` (registration endpoint). User NOT auto-verified. Proceed to /auth/verify-email with emailed OTP. |

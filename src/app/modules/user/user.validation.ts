@@ -16,7 +16,6 @@ const createUserZodSchema = z.object({
 const updateUserZodSchema = z.object({
   name: z.string().optional(),
   email: z.string().optional(),
-  image: z.string().optional(),
   contact: z.string().trim().max(32).optional(),
   phone: z.string().trim().max(32).optional(),
   location: z.string().trim().max(150).optional(),

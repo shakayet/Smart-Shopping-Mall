@@ -24,14 +24,14 @@ const escapeRegExp = (str: string): string => {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-// Helper function to extract S3 key from URL
-const extractS3KeyFromUrl = (url: string): string => {
+// Extract only keys that belong to this application's configured bucket/CDN.
+// Returning undefined for third-party URLs prevents accidental deletion calls
+// against user-supplied or OAuth avatar URLs.
+export const getS3KeyFromUrl = (url: string): string | undefined => {
+  const cloudfrontDomain = config.aws.cloudfrontDomain?.replace(/\/$/, '');
   // Check if it's a CloudFront URL
-  if (
-    config.aws.cloudfrontDomain &&
-    url.startsWith(config.aws.cloudfrontDomain)
-  ) {
-    return url.replace(config.aws.cloudfrontDomain + '/', '');
+  if (cloudfrontDomain && url.startsWith(`${cloudfrontDomain}/`)) {
+    return url.slice(cloudfrontDomain.length + 1);
   }
   // Check if it's an S3 URL
   const escapedBucketName = escapeRegExp(config.aws.bucketName as string);
@@ -42,9 +42,11 @@ const extractS3KeyFromUrl = (url: string): string => {
   if (s3UrlPattern.test(url)) {
     return url.replace(s3UrlPattern, '');
   }
-  // If we can't parse it, just return the URL as is (though this shouldn't happen)
-  return url;
+  return undefined;
 };
+
+export const isManagedS3Url = (url: string): boolean =>
+  Boolean(getS3KeyFromUrl(url));
 
 export const uploadToS3 = async (
   file: Express.Multer.File,
@@ -84,7 +86,8 @@ export const uploadToS3 = async (
 };
 
 export const deleteFromS3 = async (url: string): Promise<void> => {
-  const key = extractS3KeyFromUrl(url);
+  const key = getS3KeyFromUrl(url);
+  if (!key) return;
 
   const deleteParams = {
     Bucket: config.aws.bucketName as string,

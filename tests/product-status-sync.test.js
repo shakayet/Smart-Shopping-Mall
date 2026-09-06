@@ -5,11 +5,25 @@ const { cache } = require('../dist/helpers/cache.js');
 const { socketHelper } = require('../dist/helpers/socketHelper.js');
 const {
   PRODUCT_LIST_CACHE_PREFIX,
+  PRODUCT_DETAIL_CACHE_PREFIX,
   PRODUCT_STATUS_CHANGED_EVENT,
   PRODUCT_WISHLIST_COUNT_CHANGED_EVENT,
+  invalidateAllProductCaches,
   publishProductWishlistCount,
   synchronizeProductStatusMutation,
 } = require('../dist/app/modules/product/product-state-sync.js');
+
+test('profile changes invalidate product feeds and populated product details', () => {
+  const listKey = `${PRODUCT_LIST_CACHE_PREFIX}profile-view`;
+  const detailKey = `${PRODUCT_DETAIL_CACHE_PREFIX}product-1`;
+  cache.set(listKey, { sellerImage: 'old.jpg' }, 10_000);
+  cache.set(detailKey, { sellerImage: 'old.jpg' }, 10_000);
+
+  invalidateAllProductCaches();
+
+  assert.equal(cache.get(listKey), undefined);
+  assert.equal(cache.get(detailKey), undefined);
+});
 
 test('a secured product invalidates all feeds and broadcasts one authoritative status', async () => {
   const sellerCacheKey = `${PRODUCT_LIST_CACHE_PREFIX}seller-view`;

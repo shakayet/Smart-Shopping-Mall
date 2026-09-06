@@ -28,8 +28,8 @@ export type IUser = {
   password?: string;
   location?: string;
   country?: string;
-  image?: string;
-  avatar?: string;
+  image?: string | null;
+  avatar?: string | null;
   provider?: 'local' | 'google';
   providerId?: string;
   status: 'active' | 'restricted' | 'suspended' | 'ban';

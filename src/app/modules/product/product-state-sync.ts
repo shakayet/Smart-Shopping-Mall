@@ -19,6 +19,11 @@ export const invalidateProductCaches = (productId?: string) => {
   }
 };
 
+export const invalidateAllProductCaches = () => {
+  invalidateProductListCache();
+  cache.flushPrefix(PRODUCT_DETAIL_CACHE_PREFIX);
+};
+
 type ProductStatusChange = {
   productId: string;
   status: IProductStatus;

@@ -4,11 +4,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextFunction, Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
+import fs from 'fs';
 import catchAsync from '../../../shared/catchAsync';
-import { getSingleFilePath } from '../../../shared/getFilePath';
 import sendResponse from '../../../shared/sendResponse';
 import { UserService } from './user.service';
-import { optimizeLocalUploadedImage } from '../../../helpers/imageOptimizer';
+import { optimizeUploadedImage } from '../../../helpers/imageOptimizer';
+import { uploadToS3 } from '../../../helpers/s3Helper';
 
 const getAllUsers = catchAsync(async (req: Request, res: Response) => {
   const result = await UserService.getAllUsersToDB(req.query);
@@ -67,17 +68,26 @@ const updateProfile = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const user = req.user as any;
     const fileFields = req.files;
-    const profileImage = fileFields && !Array.isArray(fileFields)
-      ? fileFields.image?.[0]
-      : undefined;
-    if (profileImage) {
-      await optimizeLocalUploadedImage(profileImage);
+    const imageFiles = fileFields && !Array.isArray(fileFields)
+      ? fileFields.image ?? []
+      : [];
+    let image: string | undefined;
+    try {
+      if (imageFiles[0]) {
+        const optimized = await optimizeUploadedImage(imageFiles[0], 512, 80);
+        image = await uploadToS3(optimized, 'profile-images/optimized');
+      }
+    } finally {
+      await Promise.all(
+        imageFiles.map(file =>
+          fs.promises.unlink(file.path).catch(() => undefined),
+        ),
+      );
     }
-    const image = getSingleFilePath(req.files, 'image');
 
     const data = {
-      image,
       ...req.body,
+      ...(image ? { image, avatar: null } : {}),
     };
     const result = await UserService.updateProfileToDB(user, data);
 
@@ -85,6 +95,20 @@ const updateProfile = catchAsync(
       success: true,
       statusCode: StatusCodes.OK,
       message: 'Profile updated successfully',
+      data: result,
+    });
+  },
+);
+
+const deleteProfilePhoto = catchAsync(
+  async (req: Request, res: Response) => {
+    const user = req.user as any;
+    const result = await UserService.deleteProfilePhotoFromDB(user);
+
+    sendResponse(res, {
+      success: true,
+      statusCode: StatusCodes.OK,
+      message: 'Profile photo deleted successfully',
       data: result,
     });
   },
@@ -107,5 +131,6 @@ export const UserController = {
   getUserProfile,
   getProfileStats,
   updateProfile,
+  deleteProfilePhoto,
   deleteAccount,
 };
