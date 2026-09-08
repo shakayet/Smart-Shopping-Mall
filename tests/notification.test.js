@@ -6,6 +6,7 @@ const {
   NOTIFICATION_TYPE,
 } = require('../dist/enums/notification.js');
 const {
+  buildNotificationOwnershipFilter,
   toNotificationDto,
 } = require('../dist/app/modules/notification/notification.service.js');
 const {
@@ -72,6 +73,28 @@ test('notification pagination is bounded and unread filter is explicit', () => {
   assert.equal(
     NotificationValidation.listNotificationsZodSchema.safeParse({
       query: { limit: '101' },
+    }).success,
+    false,
+  );
+});
+
+test('single-notification operations are scoped to the authenticated owner', () => {
+  assert.deepEqual(
+    buildNotificationOwnershipFilter('user-1', 'notification-1'),
+    { _id: 'notification-1', recipient: 'user-1' },
+  );
+});
+
+test('single-notification deletion requires a valid MongoDB ID', () => {
+  assert.equal(
+    NotificationValidation.notificationIdZodSchema.safeParse({
+      params: { id: '507f1f77bcf86cd799439011' },
+    }).success,
+    true,
+  );
+  assert.equal(
+    NotificationValidation.notificationIdZodSchema.safeParse({
+      params: { id: 'not-an-id' },
     }).success,
     false,
   );

@@ -57,7 +57,7 @@ const markAllAsRead = catchAsync(async (req: Request, res: Response) => {
 });
 
 const deleteNotification = catchAsync(async (req: Request, res: Response) => {
-  await NotificationService.deleteNotification(
+  const result = await NotificationService.deleteNotification(
     (req.user as JwtPayload).id,
     req.params.id,
   );
@@ -65,7 +65,7 @@ const deleteNotification = catchAsync(async (req: Request, res: Response) => {
     success: true,
     statusCode: StatusCodes.OK,
     message: 'Notification deleted successfully',
-    data: null,
+    data: result,
   });
 });
 

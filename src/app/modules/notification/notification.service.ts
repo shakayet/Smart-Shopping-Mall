@@ -165,9 +165,14 @@ const getUnreadCount = async (userId: string) => ({
   }),
 });
 
+export const buildNotificationOwnershipFilter = (
+  userId: string,
+  notificationId: string,
+) => ({ _id: notificationId, recipient: userId });
+
 const markAsRead = async (userId: string, notificationId: string) => {
   const notification = await Notification.findOneAndUpdate(
-    { _id: notificationId, recipient: userId },
+    buildNotificationOwnershipFilter(userId, notificationId),
     { $set: { readAt: new Date() } },
     { new: true },
   ).lean();
@@ -186,13 +191,20 @@ const markAllAsRead = async (userId: string) => {
 };
 
 const deleteNotification = async (userId: string, notificationId: string) => {
-  const notification = await Notification.findOneAndDelete({
-    _id: notificationId,
-    recipient: userId,
-  });
+  const notification = await Notification.findOneAndDelete(
+    buildNotificationOwnershipFilter(userId, notificationId),
+  )
+    .select('_id readAt')
+    .lean();
   if (!notification) {
     throw new ApiError(StatusCodes.NOT_FOUND, 'Notification not found');
   }
+  const result = { deletedNotificationId: String(notification._id) };
+  socketHelper.emitToUser(userId, 'notification:deleted', {
+    id: result.deletedNotificationId,
+    wasUnread: !notification.readAt,
+  });
+  return result;
 };
 
 const deleteAllNotifications = async (userId: string) => {

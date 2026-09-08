@@ -77,6 +77,20 @@ PATCH /api/v1/notifications/read-all
 DELETE /api/v1/notifications/:id
 ```
 
+The notification must belong to the authenticated user. A successful response
+returns:
+
+```json
+{
+  "success": true,
+  "message": "Notification deleted successfully",
+  "data": { "deletedNotificationId": "notification-id" }
+}
+```
+
+Another connected device receives
+`notification:deleted` with `{ "id": "notification-id", "wasUnread": true }`.
+
 ### Delete all notifications
 
 ```http
