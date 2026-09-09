@@ -68,7 +68,8 @@ test('OTP email subjects are unique without exposing the code', () => {
   const second = emailTemplate.loginOtp(values);
 
   assert.notEqual(first.subject, second.subject);
-  assert.match(first.subject, /sign-in code · [0-9A-F]{8}$/);
+  assert.match(first.subject, /sign-in code [0-9A-F]{8}$/);
+  assert.equal(first.subject.includes('·'), false);
   assert.equal(first.subject.includes(String(values.otp)), false);
   assert.match(first.text, /sign-in code is 12345/);
   assert.match(first.text, /expires in 5 minutes/);

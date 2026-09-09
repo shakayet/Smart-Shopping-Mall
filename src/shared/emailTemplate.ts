@@ -12,7 +12,7 @@ const getProjectName = () => config.branding.projectName;
 const getLogoUrl = () => config.branding.logoUrl || '';
 
 const uniqueTransactionalSubject = (subject: string) =>
-  `${subject} · ${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  `${subject} ${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
 const escapeHtml = (value: string) =>
   value.replace(
